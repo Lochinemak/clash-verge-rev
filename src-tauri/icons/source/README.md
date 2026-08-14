@@ -1,6 +1,6 @@
 # Icon Sources
 
-`concepts/selected-a-reference.png` is the user-approved application-icon master. `app-icon.svg` applies the production crop and transparent rounded-square mask without redrawing the approved geometry. The tray SVGs provide simplified state-aware derivatives, and `liquid-glass.svg` is the editable source for the macOS liquid-glass layer.
+`concepts/selected-a-reference.png` is the user-approved application-icon master. `app-icon.svg` applies the production crop and transparent rounded-square mask without redrawing the approved geometry. The generated `src/assets/image/app-icon.png` supplies the unchanged inner mark to the main interface, where an SVG luminance mask crops it proportionally and applies a single theme color without showing the blue badge. The tray SVGs provide simplified state-aware derivatives, and `liquid-glass.svg` is the editable source for the macOS liquid-glass layer.
 
 Regenerate all standard PNG, ICO, ICNS, frontend, and tray outputs from the repository root:
 

@@ -12,15 +12,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import {
-  Box,
-  List,
-  Menu,
-  MenuItem,
-  Paper,
-  SvgIcon,
-  ThemeProvider,
-} from '@mui/material'
+import { Box, List, Menu, MenuItem, Paper, ThemeProvider } from '@mui/material'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import type { CSSProperties } from 'react'
@@ -29,8 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet, useNavigate } from 'react-router'
 import { MihomoWebSocket } from 'tauri-plugin-mihomo-api'
 
-import iconDark from '@/assets/image/icon_dark.svg?react'
-import iconLight from '@/assets/image/icon_light.svg?react'
+import appIcon from '@/assets/image/app-icon.png'
 import LogoSvg from '@/assets/image/logo.svg?react'
 import { BaseErrorBoundary } from '@/components/base'
 import { LayoutItem } from '@/components/layout/layout-item'
@@ -68,6 +59,53 @@ interface SortableNavMenuItemProps {
   item: NavItem
   label: string
 }
+
+interface BrandMarkProps {
+  color: string
+}
+
+const BrandMark = ({ color }: BrandMarkProps) => (
+  <svg
+    viewBox="114 103 302 322"
+    preserveAspectRatio="xMidYMid meet"
+    aria-hidden="true"
+    style={{
+      height: '36px',
+      width: '36px',
+      marginTop: '-3px',
+      marginRight: '5px',
+      marginLeft: '-3px',
+      flex: '0 0 auto',
+    }}
+  >
+    <defs>
+      <filter id="brand-mark-threshold" colorInterpolationFilters="sRGB">
+        <feColorMatrix type="saturate" values="0" />
+        <feComponentTransfer>
+          <feFuncR type="linear" slope="6" intercept="-4.5" />
+          <feFuncG type="linear" slope="6" intercept="-4.5" />
+          <feFuncB type="linear" slope="6" intercept="-4.5" />
+        </feComponentTransfer>
+      </filter>
+      <mask
+        id="brand-mark-mask"
+        maskUnits="userSpaceOnUse"
+        x="0"
+        y="0"
+        width="512"
+        height="512"
+      >
+        <image
+          href={appIcon}
+          width="512"
+          height="512"
+          filter="url(#brand-mark-threshold)"
+        />
+      </mask>
+    </defs>
+    <rect width="512" height="512" fill={color} mask="url(#brand-mark-mask)" />
+  </svg>
+)
 
 const SortableNavMenuItem = ({ item, label }: SortableNavMenuItemProps) => {
   const {
@@ -340,17 +378,7 @@ const Layout = () => {
                   justifyContent: 'space-between',
                 }}
               >
-                <SvgIcon
-                  component={isDark ? iconDark : iconLight}
-                  style={{
-                    height: '36px',
-                    width: '36px',
-                    marginTop: '-3px',
-                    marginRight: '5px',
-                    marginLeft: '-3px',
-                  }}
-                  inheritViewBox
-                />
+                <BrandMark color={isDark ? '#F8FAFC' : '#172554'} />
                 <LogoSvg fill={isDark ? 'white' : 'black'} />
               </div>
               <UpdateButton className="the-newbtn" />

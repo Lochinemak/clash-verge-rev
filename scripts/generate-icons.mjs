@@ -1,11 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,6 +46,10 @@ try {
     join(appOutput, 'icon.ico'),
     join(root, 'src', 'assets', 'image', 'logo.ico'),
   )
+  cpSync(
+    join(appOutput, 'icon.png'),
+    join(root, 'src', 'assets', 'image', 'app-icon.png'),
+  )
 
   const trayFiles = new Map([
     ['tray-common.svg', ['tray-icon.ico']],
@@ -76,15 +74,6 @@ try {
     }
   }
 
-  const brandMark = readFileSync(join(sourceDir, 'brand-mark.svg'), 'utf8')
-  writeFileSync(
-    join(root, 'src', 'assets', 'image', 'icon_light.svg'),
-    brandMark.replaceAll('currentColor', '#172554'),
-  )
-  writeFileSync(
-    join(root, 'src', 'assets', 'image', 'icon_dark.svg'),
-    brandMark.replaceAll('currentColor', '#F8FAFC'),
-  )
   cpSync(
     join(sourceDir, 'liquid-glass.svg'),
     join(iconDir, 'liquid-glass.icon', 'Assets', 'ClashVerge.svg'),
