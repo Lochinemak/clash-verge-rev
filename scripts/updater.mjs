@@ -285,8 +285,7 @@ async function processRelease(github, options, tag, isAlpha) {
 
     Object.entries(updateDataNew.platforms).forEach(([key, value]) => {
       if (value.url) {
-        updateDataNew.platforms[key].url =
-          `https://update.hwdns.net/${value.url}`
+        updateDataNew.platforms[key].url = `https://ghfast.top/${value.url}`
       } else {
         console.log(`[Error]: updateDataNew.platforms.${key} is null`)
       }
