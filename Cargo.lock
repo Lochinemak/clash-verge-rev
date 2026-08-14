@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "clash_verge_logger"
 version = "0.2.2"
-source = "git+https://github.com/clash-verge-rev/clash-verge-logger#45adad7ae6dd76baa7457e3b111a0f1927998e22"
+source = "git+https://github.com/Lochinemak/clash-verge-logger?branch=loch%2Fdev#45adad7ae6dd76baa7457e3b111a0f1927998e22"
 dependencies = [
  "arraydeque",
  "compact_str",
@@ -1257,7 +1257,7 @@ dependencies = [
 [[package]]
 name = "clash_verge_service_ipc"
 version = "2.6.1"
-source = "git+https://github.com/clash-verge-rev/clash-verge-service-ipc.git?tag=v2.6.1#10edb52ec071520f14ce78654e401e4246127d75"
+source = "git+https://github.com/Lochinemak/clash-verge-service-ipc.git?branch=loch%2Fdev#b6d3e1802f6e2abd62e2f074547b96e9728c04d6"
 dependencies = [
  "anyhow",
  "compact_str",
@@ -1267,7 +1267,7 @@ dependencies = [
  "once_cell",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "strum",
  "strum_macros",
  "sysproxy",
@@ -2043,7 +2043,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2323,7 +2323,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2357,15 +2357,6 @@ name = "fast-float2"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8eb564c5c7423d25c886fb561d1e4ee69f72354d16918afa32c08811f6b6a55"
-
-[[package]]
-name = "fast-uuid-v7"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65d7a30239eba18ae6a60dc3c3df98af18f00bba69d2b1d5f2816a831e83bff3"
-dependencies = [
- "rand 0.10.2",
-]
 
 [[package]]
 name = "fastrand"
@@ -3892,7 +3883,7 @@ dependencies = [
 [[package]]
 name = "kode-bridge"
 version = "0.4.2"
-source = "git+https://github.com/clash-verge-rev/kode-bridge.git?branch=dev#9dc3ee4689e46252600b9c1b12d20961fce113b4"
+source = "git+https://github.com/Lochinemak/kode-bridge.git?branch=loch%2Fdev#9dc3ee4689e46252600b9c1b12d20961fce113b4"
 dependencies = [
  "bytes",
  "futures",
@@ -4249,7 +4240,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4418,7 +4409,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5553,7 +5544,7 @@ dependencies = [
  "once_cell",
  "socket2 0.5.10",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6101,7 +6092,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6114,7 +6105,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6173,7 +6164,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6804,7 +6795,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7017,8 +7008,8 @@ dependencies = [
 
 [[package]]
 name = "sysproxy"
-version = "0.5.5"
-source = "git+https://github.com/clash-verge-rev/sysproxy-rs?branch=main#ab5ba0929d56721d774b1c5c29d6a32e6634e7ce"
+version = "0.6.0"
+source = "git+https://github.com/Lochinemak/sysproxy-rs?branch=loch%2Fdev#16500c3e91a4fa8d541108fb603c5ee4258004a6"
 dependencies = [
  "iptools",
  "log",
@@ -7452,11 +7443,10 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-mihomo"
 version = "0.5.5"
-source = "git+https://github.com/clash-verge-rev/tauri-plugin-mihomo?branch=refactor-use-reqwest-ipc#d9398bf8e862c0cd613b79ada45cc5d893820ed6"
+source = "git+https://github.com/Lochinemak/tauri-plugin-mihomo?branch=loch%2Fdev#a9c359edb2154c6e92bcf423e489a8082f2aa006"
 dependencies = [
  "arc-swap",
  "clashmap",
- "fast-uuid-v7",
  "futures-util",
  "http 1.5.0",
  "log",
@@ -7471,6 +7461,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "ts-rs",
+ "uuid",
  "windows-sys 0.61.2",
 ]
 
@@ -7691,10 +7682,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8413,7 +8404,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8516,7 +8507,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9716,7 +9707,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

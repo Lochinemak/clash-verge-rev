@@ -6,6 +6,9 @@ import { log_error, log_info, log_success } from './utils.mjs'
 
 const CHAT_ID_RELEASE = '@clash_verge_re' // 正式发布频道
 const CHAT_ID_TEST = '@vergetest' // 测试频道
+const REPOSITORY_URL = `${process.env.GITHUB_SERVER_URL || 'https://github.com'}/${
+  process.env.GITHUB_REPOSITORY || 'Lochinemak/clash-verge-rev'
+}`
 
 async function sendTelegramNotification() {
   if (!process.env.TELEGRAM_BOT_TOKEN) {
@@ -21,7 +24,7 @@ async function sendTelegramNotification() {
 
   const downloadUrl =
     process.env.DOWNLOAD_URL ||
-    `https://github.com/clash-verge-rev/clash-verge-rev/releases/download/v${version}`
+    `${REPOSITORY_URL}/releases/download/v${version}`
 
   const isAutobuild =
     process.env.BUILD_TYPE === 'autobuild' || version.includes('autobuild')
@@ -116,7 +119,7 @@ async function sendTelegramNotification() {
   const releaseTitle = isAutobuild ? '滚动更新版发布' : '正式发布'
   const encodedVersion = encodeURIComponent(version)
   const releaseTag = isAutobuild ? 'autobuild' : `v${version}`
-  const content = `<b>🎉 <a href="https://github.com/clash-verge-rev/clash-verge-rev/releases/tag/${releaseTag}">Clash Verge Rev v${version}</a> ${releaseTitle}</b>\n\n${formattedContent}`
+  const content = `<b>🎉 <a href="${REPOSITORY_URL}/releases/tag/${releaseTag}">Clash Verge Rev v${version}</a> ${releaseTitle}</b>\n\n${formattedContent}`
 
   // 发送到 Telegram
   try {
@@ -127,7 +130,7 @@ async function sendTelegramNotification() {
         text: content,
         link_preview_options: {
           is_disabled: false,
-          url: `https://github.com/clash-verge-rev/clash-verge-rev/releases/tag/v${encodedVersion}`,
+          url: `${REPOSITORY_URL}/releases/tag/v${encodedVersion}`,
           prefer_large_media: true,
         },
         parse_mode: 'HTML',

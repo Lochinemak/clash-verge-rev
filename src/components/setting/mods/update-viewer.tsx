@@ -62,13 +62,10 @@ const GITHUB_ALERT_CLASS_PATTERN =
 const shouldShowReleaseNotes = (language: string) => language === 'zh'
 
 const LazyReactMarkdown = lazy(async () => {
-  const [{ default: ReactMarkdown }, { default: rehypeRaw }] =
-    await Promise.all([import('react-markdown'), import('rehype-raw')])
+  const { default: ReactMarkdown } = await import('react-markdown')
 
   return {
-    default: (props: ReactMarkdownOptions) => (
-      <ReactMarkdown {...props} rehypePlugins={[rehypeRaw]} />
-    ),
+    default: (props: ReactMarkdownOptions) => <ReactMarkdown {...props} />,
   }
 })
 
@@ -277,7 +274,7 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
             sx={{ whiteSpace: 'nowrap' }}
             onClick={() => {
               openUrl(
-                `https://github.com/clash-verge-rev/clash-verge-rev/releases/tag/v${updateInfo?.version}`,
+                `https://github.com/Lochinemak/clash-verge-rev/releases/tag/v${updateInfo?.version}`,
               )
             }}
           >
