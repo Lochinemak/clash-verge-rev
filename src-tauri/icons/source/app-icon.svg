@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1150 1150">
+  <defs>
+    <clipPath id="approved-badge">
+      <rect x="16" y="8" width="1118" height="1130" rx="170"/>
+    </clipPath>
+  </defs>
+  <image
+    x="-52"
+    y="-54"
+    width="1254"
+    height="1254"
+    xlink:href="concepts/selected-a-reference.png"
+    clip-path="url(#approved-badge)"
+  />
+</svg>
