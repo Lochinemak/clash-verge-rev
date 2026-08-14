@@ -21,7 +21,7 @@ test('service prebuild release follows the Cargo dependency version', async () =
     {
       version: releaseVersion,
       archiveFile: `clash-verge-service-ipc-${releaseVersion}-x86_64-pc-windows-msvc.zip`,
-      downloadURL: `https://github.com/clash-verge-rev/clash-verge-service-ipc/releases/download/${releaseVersion}/clash-verge-service-ipc-${releaseVersion}-x86_64-pc-windows-msvc.zip`,
+      downloadURL: `https://github.com/Lochinemak/clash-verge-service-ipc/releases/download/${releaseVersion}/clash-verge-service-ipc-${releaseVersion}-x86_64-pc-windows-msvc.zip`,
     },
   )
 })
