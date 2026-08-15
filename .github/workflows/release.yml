@@ -103,7 +103,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.portable_only
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: gh release view "$RELEASE_TAG"
+        run: gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
 
   update_tag:
     name: Update tag
