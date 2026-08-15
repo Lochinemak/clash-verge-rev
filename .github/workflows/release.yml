@@ -603,7 +603,7 @@ jobs:
   release-update-for-fixed-webview2:
     if: ${{ !contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-rc') }}
     runs-on: ubuntu-latest
-    needs: [update_tag]
+    needs: [update_tag, release-update]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

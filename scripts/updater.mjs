@@ -399,4 +399,7 @@ async function getSignature(url) {
   return response.text()
 }
 
-resolveUpdater().catch(console.error)
+resolveUpdater().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})
