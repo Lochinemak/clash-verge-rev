@@ -5,6 +5,7 @@ use tauri::Url;
 
 use crate::{
     config::{Config, PrfItem, profiles},
+    constants::identity::DEEP_LINK_SCHEMES,
     core::{CoreManager, handle, timer::Timer},
     utils::help,
 };
@@ -39,7 +40,7 @@ pub(super) async fn resolve_scheme(param: &str) -> Result<()> {
 }
 
 fn extract_subscription_info(link_parsed: &Url) -> Option<(std::string::String, Option<String>)> {
-    if !matches!(link_parsed.scheme(), "clash" | "clash-verge") {
+    if !DEEP_LINK_SCHEMES.contains(&link_parsed.scheme()) {
         return None;
     }
 

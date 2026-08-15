@@ -47,6 +47,7 @@ async function resolveUpdater() {
 
   const promises = latestRelease.assets.map(async (asset) => {
     const { name, browser_download_url } = asset
+    if (!name.startsWith('Clash.Verge.Next_')) return
 
     // win64 url
     if (name.endsWith('x64_fixed_webview2-setup.exe')) {

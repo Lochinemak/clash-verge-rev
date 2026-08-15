@@ -1256,8 +1256,8 @@ dependencies = [
 
 [[package]]
 name = "clash_verge_service_ipc"
-version = "2.6.2"
-source = "git+https://github.com/Lochinemak/clash-verge-service-ipc.git?branch=loch%2Fdev#cdb790d5b5df4d3068e79be95068936c96c0ee6f"
+version = "2.6.3"
+source = "git+https://github.com/Lochinemak/clash-verge-service-ipc.git?branch=loch%2Fdev#057b31439af5fb06c0e0b94392aa549d22a2fb82"
 dependencies = [
  "anyhow",
  "compact_str",

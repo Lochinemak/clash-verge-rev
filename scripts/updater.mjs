@@ -128,6 +128,12 @@ async function processRelease(github, options, tag, isAlpha) {
 
     const promises = release.assets.map(async (asset) => {
       const { name, browser_download_url } = asset
+      if (
+        !name.startsWith('Clash.Verge.Next_') &&
+        !name.startsWith('Clash.Verge.Next-')
+      ) {
+        return
+      }
 
       // Process all the platform URL and signature data
       // win64 url

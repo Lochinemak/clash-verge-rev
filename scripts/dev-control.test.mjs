@@ -48,7 +48,7 @@ test('development startup preserves the installed service state unless service m
 })
 
 test('Windows elevation passes the installer path outside PowerShell source', () => {
-  const installer = String.raw`C:\ssp\path with spaces\clash-verge-service-install.exe`
+  const installer = String.raw`C:\ssp\path with spaces\clash-verge-next-service-install.exe`
   const baseEnvironment = { SYSTEMROOT: String.raw`C:\Windows` }
 
   const invocation = windowsElevationInvocation(installer, baseEnvironment)
@@ -571,6 +571,8 @@ test('trace invocation preserves the existing Rust flags and Tauri arguments', (
     'exec',
     'tauri',
     'dev',
+    '--config',
+    'src-tauri/tauri.dev.conf.json',
     '-f',
     'verge-dev',
     'tokio-trace',
@@ -583,7 +585,15 @@ test('trace invocation preserves the existing Rust flags and Tauri arguments', (
 test('normal dev invocation preserves arguments and remains direct off macOS', () => {
   const invocation = buildTauriInvocation('dev', { PATH: '/bin' }, 'linux')
   assert.equal(invocation.command, 'pnpm')
-  assert.deepEqual(invocation.args, ['exec', 'tauri', 'dev', '-f', 'verge-dev'])
+  assert.deepEqual(invocation.args, [
+    'exec',
+    'tauri',
+    'dev',
+    '--config',
+    'src-tauri/tauri.dev.conf.json',
+    '-f',
+    'verge-dev',
+  ])
   assert.deepEqual(invocation.env, { PATH: '/bin', RUST_BACKTRACE: 'full' })
   assert.equal(invocation.detached, false)
 })
@@ -594,6 +604,8 @@ test('sidecar invocation explicitly enables only the development sidecar feature
     'exec',
     'tauri',
     'dev',
+    '--config',
+    'src-tauri/tauri.dev.conf.json',
     '-f',
     'verge-dev,dev-sidecar',
   ])
@@ -662,6 +674,8 @@ test('anchor launches the exact inner command non-detached and stays for release
     'exec',
     'tauri',
     'dev',
+    '--config',
+    'src-tauri/tauri.dev.conf.json',
     '-f',
     'verge-dev',
     'tokio-trace',

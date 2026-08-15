@@ -1,0 +1,6 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Clash Verge Next Dev",
+  "mainBinaryName": "clash-verge-next-dev",
+  "identifier": "io.github.loch.clash-verge-next.dev"
+}

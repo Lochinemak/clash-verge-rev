@@ -1,5 +1,31 @@
 use std::time::Duration;
 
+pub mod identity {
+    #[cfg(not(feature = "verge-dev"))]
+    pub const PRODUCT_NAME: &str = "Clash Verge Next";
+    #[cfg(feature = "verge-dev")]
+    pub const PRODUCT_NAME: &str = "Clash Verge Next Dev";
+
+    #[cfg(target_os = "linux")]
+    pub const DESKTOP_FILE: &str = "clash-verge-next.desktop";
+    pub const DEEP_LINK_SCHEMES: &[&str] = &["clash", "clash-verge", "clash-verge-next"];
+
+    #[cfg(target_os = "windows")]
+    pub const SERVICE_BINARY: &str = "clash-verge-next-service.exe";
+    #[cfg(not(target_os = "windows"))]
+    pub const SERVICE_BINARY: &str = "clash-verge-next-service";
+
+    #[cfg(target_os = "windows")]
+    pub const SERVICE_INSTALLER: &str = "clash-verge-next-service-install.exe";
+    #[cfg(not(target_os = "windows"))]
+    pub const SERVICE_INSTALLER: &str = "clash-verge-next-service-install";
+
+    #[cfg(target_os = "windows")]
+    pub const SERVICE_UNINSTALLER: &str = "clash-verge-next-service-uninstall.exe";
+    #[cfg(not(target_os = "windows"))]
+    pub const SERVICE_UNINSTALLER: &str = "clash-verge-next-service-uninstall";
+}
+
 pub mod network {
     pub const DEFAULT_EXTERNAL_CONTROLLER: &str = "127.0.0.1:9097";
 

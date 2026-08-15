@@ -542,9 +542,9 @@ const resolvePlugin = async () => {
 // service chmod (保留并使用 glob)
 const resolveServicePermission = async () => {
   const serviceExecutables = [
-    'clash-verge-service*',
-    'clash-verge-service-install*',
-    'clash-verge-service-uninstall*',
+    'clash-verge-next-service*',
+    'clash-verge-next-service-install*',
+    'clash-verge-next-service-uninstall*',
   ]
   const hashCache = await loadHashCache()
   let hasChanges = false
@@ -579,9 +579,9 @@ const resolveServicePermission = async () => {
 // Other resource resolvers (service, mmdb, geosite, geoip, enableLoopback)
 // =======================
 const SERVICE_BINARIES = [
-  'clash-verge-service',
-  'clash-verge-service-install',
-  'clash-verge-service-uninstall',
+  'clash-verge-next-service',
+  'clash-verge-next-service-install',
+  'clash-verge-next-service-uninstall',
 ]
 
 function serviceFileInfo(name) {
@@ -624,7 +624,7 @@ async function resolveServiceBundle() {
     SIDECAR_HOST,
     platform,
   )
-  const tempDir = path.join(TEMP_DIR, 'clash-verge-service-ipc')
+  const tempDir = path.join(TEMP_DIR, 'clash-verge-next-service-ipc')
   const tempArchive = path.join(tempDir, archiveFile)
 
   await fsp.mkdir(tempDir, { recursive: true })
@@ -638,7 +638,7 @@ async function resolveServiceBundle() {
       zip
         .getEntries()
         .forEach((entry) =>
-          log_debug('"clash-verge-service-ipc" entry:', entry.entryName),
+          log_debug('"clash-verge-next-service-ipc" entry:', entry.entryName),
         )
       zip.extractAllTo(tempDir, true)
     } else {

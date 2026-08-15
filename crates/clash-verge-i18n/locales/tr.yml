@@ -22,18 +22,18 @@ notifications:
     body: Profil yeniden etkinleştirildi.
   appQuit:
     title: Çıkış Yapılmak Üzere
-    body: Clash Verge kapanmak üzere.
+    body: Clash Verge Next kapanmak üzere.
   appHidden:
     title: Uygulama Gizlendi
-    body: Clash Verge arka planda çalışıyor.
+    body: Clash Verge Next arka planda çalışıyor.
   updateReady:
-    title: Clash Verge Update
+    title: Clash Verge Next Update
     body: A new version (v{version}) has been downloaded and is ready to install.
     installNow: Install Now
     later: Later
 service:
-  adminInstallPrompt: Clash Verge hizmetini kurmak için yönetici ayrıcalıkları gerekir.
-  adminUninstallPrompt: Clash Verge hizmetini kaldırmak için yönetici ayrıcalıkları gerekir.
+  adminInstallPrompt: Clash Verge Next hizmetini kurmak için yönetici ayrıcalıkları gerekir.
+  adminUninstallPrompt: Clash Verge Next hizmetini kaldırmak için yönetici ayrıcalıkları gerekir.
 launchGuard:
   currentExeError: 'Uygulamanın konumu belirlenemedi: {error}'
   homeDirError: 'Geçerli kullanıcının ana dizini belirlenemedi. Uygulama kapatılacak: {error}'

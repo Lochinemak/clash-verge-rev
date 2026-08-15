@@ -142,7 +142,7 @@ export async function prepareDevelopmentService({
     '--bins',
   ])
 
-  const service = executable('clash-verge-service', platform)
+  const service = executable('clash-verge-next-service', platform)
   await access(service)
   return dirname(service)
 }
@@ -153,13 +153,15 @@ export async function ensureDevelopmentService({
   const serviceDirectory = await prepareDevelopmentService({ platform })
   const service = join(
     serviceDirectory,
-    platform === 'win32' ? 'clash-verge-service.exe' : 'clash-verge-service',
+    platform === 'win32'
+      ? 'clash-verge-next-service.exe'
+      : 'clash-verge-next-service',
   )
   const installer = join(
     serviceDirectory,
     platform === 'win32'
-      ? 'clash-verge-service-install.exe'
-      : 'clash-verge-service-install',
+      ? 'clash-verge-next-service-install.exe'
+      : 'clash-verge-next-service-install',
   )
   const driver = join(
     serviceDirectory,

@@ -14,7 +14,7 @@ export function resolveServiceRelease(cargoManifest, host, platform) {
 
   const version = `v${packageVersion}`
   const archiveExt = platform === 'win32' ? 'zip' : 'tar.gz'
-  const archiveFile = `clash-verge-service-ipc-${version}-${host}.${archiveExt}`
+  const archiveFile = `clash-verge-next-service-ipc-${version}-${host}.${archiveExt}`
   return {
     version,
     archiveFile,

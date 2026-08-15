@@ -22,18 +22,18 @@ notifications:
     body: 訂閱已啟用。
   appQuit:
     title: 即將退出
-    body: Clash Verge 即將退出。
+    body: Clash Verge Next 即將退出。
   appHidden:
     title: 應用已隱藏
-    body: Clash Verge 正在背景執行。
+    body: Clash Verge Next 正在背景執行。
   updateReady:
-    title: Clash Verge 更新
+    title: Clash Verge Next 更新
     body: 新版本（v{version}）已下載完成，是否立即安裝？
     installNow: 立即安裝
     later: 稍後
 service:
-  adminInstallPrompt: 安裝 Clash Verge 服務需要管理員權限
-  adminUninstallPrompt: 解除安裝 Clash Verge 服務需要管理員權限
+  adminInstallPrompt: 安裝 Clash Verge Next 服務需要管理員權限
+  adminUninstallPrompt: 解除安裝 Clash Verge Next 服務需要管理員權限
 launchGuard:
   currentExeError: 無法判斷應用程式位置：{error}
   homeDirError: 無法判斷目前使用者的個人目錄，應用程式將結束：{error}

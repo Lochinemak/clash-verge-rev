@@ -3,7 +3,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "bundle": {
     "active": true,
-    "longDescription": "Clash Verge Rev",
+    "longDescription": "Clash Verge Next",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -12,11 +12,11 @@
       "icons/icon.ico"
     ],
     "resources": ["resources"],
-    "publisher": "Clash Verge Rev",
+    "publisher": "Clash Verge Next",
     "externalBin": ["sidecar/verge-mihomo", "sidecar/verge-mihomo-alpha"],
     "copyright": "GNU General Public License v3.0",
     "category": "DeveloperTool",
-    "shortDescription": "Clash Verge Rev",
+    "shortDescription": "Clash Verge Next",
     "createUpdaterArtifacts": true
   },
   "build": {
@@ -26,7 +26,8 @@
     "devUrl": "http://localhost:3000/",
     "removeUnusedCommands": true
   },
-  "productName": "Clash Verge",
+  "productName": "Clash Verge Next",
+  "mainBinaryName": "clash-verge-next",
   "identifier": "io.github.loch.clash-verge-next",
   "plugins": {
     "updater": {
@@ -42,7 +43,7 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["clash", "clash-verge"]
+        "schemes": ["clash", "clash-verge", "clash-verge-next"]
       }
     }
   },

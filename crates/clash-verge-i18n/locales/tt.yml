@@ -22,18 +22,18 @@ notifications:
     body: Профиль яңадан активлаштырылды.
   appQuit:
     title: Чыгар алдыннан
-    body: Clash Verge чыгарга җыена.
+    body: Clash Verge Next чыгарга җыена.
   appHidden:
     title: Кушымта яшерелде
-    body: Clash Verge фон режимында эшли.
+    body: Clash Verge Next фон режимында эшли.
   updateReady:
-    title: Clash Verge Update
+    title: Clash Verge Next Update
     body: A new version (v{version}) has been downloaded and is ready to install.
     installNow: Install Now
     later: Later
 service:
-  adminInstallPrompt: Clash Verge хезмәтен урнаштыру өчен администратор хокуклары кирәк.
-  adminUninstallPrompt: Clash Verge хезмәтен бетерү өчен администратор хокуклары кирәк.
+  adminInstallPrompt: Clash Verge Next хезмәтен урнаштыру өчен администратор хокуклары кирәк.
+  adminUninstallPrompt: Clash Verge Next хезмәтен бетерү өчен администратор хокуклары кирәк.
 launchGuard:
   currentExeError: 'Кушымтаның урнашу урынын билгеләп булмады: {error}'
   homeDirError: 'Хәзерге кулланучының өй каталогын билгеләп булмады. Кушымта ябылачак: {error}'

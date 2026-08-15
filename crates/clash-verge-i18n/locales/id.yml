@@ -22,18 +22,18 @@ notifications:
     body: Profil diaktifkan kembali.
   appQuit:
     title: Akan Keluar
-    body: Clash Verge akan keluar.
+    body: Clash Verge Next akan keluar.
   appHidden:
     title: Aplikasi Disembunyikan
-    body: Clash Verge berjalan di latar belakang.
+    body: Clash Verge Next berjalan di latar belakang.
   updateReady:
-    title: Clash Verge Update
+    title: Clash Verge Next Update
     body: A new version (v{version}) has been downloaded and is ready to install.
     installNow: Install Now
     later: Later
 service:
-  adminInstallPrompt: Menginstal layanan Clash Verge memerlukan hak administrator.
-  adminUninstallPrompt: Menghapus instalasi layanan Clash Verge memerlukan hak administrator.
+  adminInstallPrompt: Menginstal layanan Clash Verge Next memerlukan hak administrator.
+  adminUninstallPrompt: Menghapus instalasi layanan Clash Verge Next memerlukan hak administrator.
 launchGuard:
   currentExeError: 'Lokasi aplikasi tidak dapat ditentukan: {error}'
   homeDirError: 'Direktori beranda pengguna saat ini tidak dapat ditentukan. Aplikasi akan ditutup: {error}'

@@ -9,7 +9,7 @@
     "dev:sidecar": "node scripts/dev.mjs sidecar",
     "dev:diff": "node scripts/dev.mjs dev",
     "dev:trace": "node scripts/dev.mjs trace",
-    "dev:tauri": "cross-env RUST_BACKTRACE=full tauri dev -f tauri-dev",
+    "dev:tauri": "cross-env RUST_BACKTRACE=full tauri dev --config src-tauri/tauri.dev.conf.json -f tauri-dev",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tauri build",
     "build:fast": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tauri build -- --profile fast-release",
     "icons:generate": "node scripts/generate-icons.mjs",

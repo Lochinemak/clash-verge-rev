@@ -516,6 +516,7 @@ pub async fn init_resources() -> Result<()> {
 /// initialize url scheme
 #[cfg(target_os = "windows")]
 pub fn init_scheme() -> Result<()> {
+    use crate::constants::identity::{DEEP_LINK_SCHEMES, PRODUCT_NAME};
     use tauri::utils::platform::current_exe;
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
 
@@ -524,19 +525,23 @@ pub fn init_scheme() -> Result<()> {
     let app_exe = app_exe.to_string_lossy().into_owned();
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (clash, _) = hkcu.create_subkey("Software\\Classes\\Clash")?;
-    clash.set_value("", &"Clash Verge")?;
-    clash.set_value("URL Protocol", &"Clash Verge URL Scheme Protocol")?;
-    let (default_icon, _) = hkcu.create_subkey("Software\\Classes\\Clash\\DefaultIcon")?;
-    default_icon.set_value("", &app_exe)?;
-    let (command, _) = hkcu.create_subkey("Software\\Classes\\Clash\\Shell\\Open\\Command")?;
-    command.set_value("", &format!("{app_exe} \"%1\""))?;
+    for scheme in DEEP_LINK_SCHEMES {
+        let class = format!("Software\\Classes\\{scheme}");
+        let (protocol, _) = hkcu.create_subkey(&class)?;
+        protocol.set_value("", &format!("{PRODUCT_NAME} URL Scheme Protocol"))?;
+        protocol.set_value("URL Protocol", &"")?;
+
+        let (default_icon, _) = hkcu.create_subkey(format!("{class}\\DefaultIcon"))?;
+        default_icon.set_value("", &app_exe)?;
+        let (command, _) = hkcu.create_subkey(format!("{class}\\Shell\\Open\\Command"))?;
+        command.set_value("", &format!("\"{app_exe}\" \"%1\""))?;
+    }
 
     Ok(())
 }
 #[cfg(target_os = "linux")]
 pub fn init_scheme() -> Result<()> {
-    const DESKTOP_FILE: &str = "clash-verge.desktop";
+    use crate::constants::identity::{DEEP_LINK_SCHEMES, DESKTOP_FILE};
 
     for scheme in DEEP_LINK_SCHEMES {
         let handler = format!("x-scheme-handler/{scheme}");
@@ -560,9 +565,6 @@ pub fn init_scheme() -> Result<()> {
 pub const fn init_scheme() -> Result<()> {
     Ok(())
 }
-
-#[cfg(target_os = "linux")]
-const DEEP_LINK_SCHEMES: &[&str] = &["clash", "clash-verge"];
 
 pub async fn startup_script() -> Result<()> {
     let app_handle = handle::Handle::app_handle();

@@ -2,6 +2,7 @@
 use crate::utils::dirs;
 use crate::{
     config::Config,
+    constants::identity,
     core::{
         CoreManager,
         handle::Handle,
@@ -177,10 +178,6 @@ fn macos_service_install_markers() -> Vec<String> {
             "/Library/PrivilegedHelperTools/{}.bundle",
             clash_verge_service_ipc::MACOS_SERVICE_ID
         ),
-        #[cfg(not(feature = "verge-dev"))]
-        "/Library/LaunchDaemons/io.github.clashverge.helper.plist".to_owned(),
-        #[cfg(not(feature = "verge-dev"))]
-        "/Library/PrivilegedHelperTools/io.github.clashverge.helper".to_owned(),
     ]
 }
 
@@ -458,28 +455,6 @@ fn service_core_path(clash_core: &str, bin_ext: &str) -> Result<PathBuf> {
     Ok(sibling)
 }
 
-/// 卸载服务前以 root 清理残留 core 和 IPC 套接字。
-#[cfg(target_os = "macos")]
-fn macos_force_stop_core_shell() -> String {
-    use crate::config::IVerge;
-
-    // 只清理 root 拥有的服务内核。
-    let mut parts: Vec<String> = IVerge::VALID_CLASH_CORES
-        .iter()
-        .map(|core| format!("/usr/bin/pkill -U root -x {core} 2>/dev/null || true"))
-        .collect();
-
-    if let Ok(ipc) = dirs::ipc_path()
-        && let Ok(ipc_str) = dirs::path_to_str(&ipc)
-    {
-        // 转义单引号,避免破坏 shell 参数。
-        let escaped = ipc_str.replace('\'', r"'\''");
-        parts.push(format!("/bin/rm -f '{escaped}' 2>/dev/null || true"));
-    }
-
-    parts.join("; ")
-}
-
 #[cfg(target_os = "macos")]
 fn escape_osascript_double_quoted_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
@@ -524,8 +499,8 @@ fn uninstall_service() -> Result<()> {
     use runas::Command as RunasCommand;
     use std::os::windows::process::CommandExt as _;
 
-    let uninstall_path = packaged_service_tool_path("clash-verge-service-uninstall.exe", || {
-        Ok(dirs::service_path()?.with_file_name("clash-verge-service-uninstall.exe"))
+    let uninstall_path = packaged_service_tool_path(identity::SERVICE_UNINSTALLER, || {
+        Ok(dirs::service_path()?.with_file_name(identity::SERVICE_UNINSTALLER))
     })?;
 
     if !uninstall_path.exists() {
@@ -558,8 +533,8 @@ fn install_service() -> Result<()> {
     use runas::Command as RunasCommand;
     use std::os::windows::process::CommandExt as _;
 
-    let install_path = packaged_service_tool_path("clash-verge-service-install.exe", || {
-        Ok(dirs::service_path()?.with_file_name("clash-verge-service-install.exe"))
+    let install_path = packaged_service_tool_path(identity::SERVICE_INSTALLER, || {
+        Ok(dirs::service_path()?.with_file_name(identity::SERVICE_INSTALLER))
     })?;
 
     if !install_path.exists() {
@@ -601,8 +576,8 @@ fn install_service() -> Result<()> {
 fn uninstall_service() -> Result<()> {
     logging!(info, Type::Service, "uninstall service");
 
-    let uninstall_path = packaged_service_tool_path("clash-verge-service-uninstall", || {
-        Ok(tauri::utils::platform::current_exe()?.with_file_name("clash-verge-service-uninstall"))
+    let uninstall_path = packaged_service_tool_path(identity::SERVICE_UNINSTALLER, || {
+        Ok(tauri::utils::platform::current_exe()?.with_file_name(identity::SERVICE_UNINSTALLER))
     })?;
 
     if !uninstall_path.exists() {
@@ -649,8 +624,8 @@ fn uninstall_service() -> Result<()> {
 fn install_service() -> Result<()> {
     logging!(info, Type::Service, "install service");
 
-    let install_path = packaged_service_tool_path("clash-verge-service-install", || {
-        Ok(tauri::utils::platform::current_exe()?.with_file_name("clash-verge-service-install"))
+    let install_path = packaged_service_tool_path(identity::SERVICE_INSTALLER, || {
+        Ok(tauri::utils::platform::current_exe()?.with_file_name(identity::SERVICE_INSTALLER))
     })?;
 
     if !install_path.exists() {
@@ -703,8 +678,8 @@ fn linux_running_as_root() -> bool {
 fn uninstall_service() -> Result<()> {
     logging!(info, Type::Service, "uninstall service");
 
-    let uninstall_path = packaged_service_tool_path("clash-verge-service-uninstall", || {
-        Ok(dirs::service_path()?.with_file_name("clash-verge-service-uninstall"))
+    let uninstall_path = packaged_service_tool_path(identity::SERVICE_UNINSTALLER, || {
+        Ok(dirs::service_path()?.with_file_name(identity::SERVICE_UNINSTALLER))
     })?;
 
     if !uninstall_path.exists() {
@@ -717,9 +692,10 @@ fn uninstall_service() -> Result<()> {
     // clash_verge_i18n::sync_locale(Config::verge().await.latest_arc().language.as_deref());
 
     let prompt = clash_verge_i18n::t!("service.adminUninstallPrompt");
-    // 先清理服务残留,再执行卸载器。
     let uninstall_quoted = shell_single_quote(&uninstall_shell);
-    let shell = format!("cd /; {}; {uninstall_quoted}", macos_force_stop_core_shell());
+    // The identity-scoped uninstaller owns service shutdown and cleanup. Avoid global process-name
+    // cleanup here because an upstream Clash Verge installation can run the same core binary.
+    let shell = format!("cd /; {uninstall_quoted}");
     let shell = escape_osascript_double_quoted_string(&shell);
     let command = format!(r#"do shell script "{shell}" with administrator privileges with prompt "{prompt}""#);
 
@@ -741,9 +717,9 @@ fn uninstall_service() -> Result<()> {
 fn install_service() -> Result<()> {
     logging!(info, Type::Service, "install service");
 
-    let binary_path = packaged_service_tool_path("clash-verge-service", dirs::service_path)?;
-    let install_path = packaged_service_tool_path("clash-verge-service-install", || {
-        Ok(dirs::service_path()?.with_file_name("clash-verge-service-install"))
+    let binary_path = packaged_service_tool_path(identity::SERVICE_BINARY, dirs::service_path)?;
+    let install_path = packaged_service_tool_path(identity::SERVICE_INSTALLER, || {
+        Ok(dirs::service_path()?.with_file_name(identity::SERVICE_INSTALLER))
     })?;
 
     if !install_path.exists() {
@@ -865,7 +841,7 @@ pub(super) async fn stage_runtime_by_service(config_file: &Path) -> Result<Stage
 
     let response = clash_verge_service_ipc::stage_runtime(&credentials, &session, &runtime)
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("无法连接到 Clash Verge Next Service")?;
     if response.code > 0 {
         return Ok(StageRequest::Refused {
             code: response.code,
@@ -875,7 +851,7 @@ pub(super) async fn stage_runtime_by_service(config_file: &Path) -> Result<Stage
     response
         .data
         .map(StageRequest::Answered)
-        .context("Clash Verge Service 未返回运行时暂存结果")
+        .context("Clash Verge Next Service 未返回运行时暂存结果")
 }
 
 /// 尝试使用服务启动core
@@ -896,7 +872,7 @@ pub(super) async fn start_with_existing_service(config_file: &Path) -> Result<()
         Ok(response) => response,
         Err(error) => {
             start_owner_monitor();
-            return Err(error).context("无法连接到Clash Verge Service");
+            return Err(error).context("无法连接到 Clash Verge Next Service");
         }
     };
 
@@ -910,7 +886,7 @@ pub(super) async fn start_with_existing_service(config_file: &Path) -> Result<()
         );
     }
 
-    let result = response.data.context("Clash Verge Service 未返回会话信息")?;
+    let result = response.data.context("Clash Verge Next Service 未返回会话信息")?;
     let supports_runtime_staging = probe_runtime_staging_support().await;
     *ACTIVE_SERVICE_SESSION.lock() = Some(ActiveServiceSession {
         proof: OwnerSessionProof {
@@ -958,7 +934,7 @@ pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
         clash_verge_service_ipc::get_clash_logs(&credentials)
     })
     .await;
-    let response = response.context("无法连接到Clash Verge Service")?;
+    let response = response.context("无法连接到 Clash Verge Next Service")?;
 
     if response.code > 0 {
         if response.code == clash_verge_service_ipc::ServiceErrorCode::NotActive as u16 {
@@ -979,7 +955,7 @@ pub(crate) async fn get_clash_log_snapshot_by_service() -> Result<String> {
         clash_verge_service_ipc::get_clash_log_snapshot(&credentials)
     })
     .await;
-    let response = response.context("无法连接到Clash Verge Service")?;
+    let response = response.context("无法连接到 Clash Verge Next Service")?;
     if response.code > 0 {
         if response.code == clash_verge_service_ipc::ServiceErrorCode::NotActive as u16 {
             recover_after_owner_loss(generation, OwnerRecoveryReason::Displaced).await;
@@ -1020,7 +996,7 @@ pub(super) async fn stop_core_by_service() -> Result<()> {
         Ok(response) => response,
         Err(error) => {
             start_owner_monitor();
-            return Err(error).context("无法连接到Clash Verge Service");
+            return Err(error).context("无法连接到 Clash Verge Next Service");
         }
     };
 
@@ -1049,7 +1025,7 @@ pub(crate) async fn update_writer_by_service(writer: &WriterConfig) -> Result<()
     let session = active_service_session()?;
     let response = clash_verge_service_ipc::update_writer(&credentials, &session, writer)
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("无法连接到 Clash Verge Next Service")?;
     if response.code > 0 {
         bail!(response.message);
     }
@@ -1068,11 +1044,11 @@ pub(super) async fn set_system_proxy_by_service_with_session(
     let credentials = current_owner_credentials()?;
     let response = clash_verge_service_ipc::set_system_proxy(&credentials, session, proxy)
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("无法连接到 Clash Verge Next Service")?;
     if response.code > 0 {
         bail!(response.message);
     }
-    response.data.context("Clash Verge Service 未返回系统代理结果")
+    response.data.context("Clash Verge Next Service 未返回系统代理结果")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1620,14 +1596,14 @@ mod tests {
 
         let root = TestDirectory::new("development-service-tool")?;
         let home = root.path().join("home");
-        let source = root.path().join("clash-verge-service-install");
+        let source = root.path().join("clash-verge-next-service-install");
         std::fs::write(&source, b"development installer")?;
 
         let selected = service_tool_path_for(&source, Some(&home), true)?;
 
         assert_eq!(
             selected,
-            service_tools_staging_directory(&home).join("clash-verge-service-install")
+            service_tools_staging_directory(&home).join("clash-verge-next-service-install")
         );
         assert_eq!(std::fs::read(&selected)?, b"development installer");
         assert_ne!(std::fs::metadata(&selected)?.permissions().mode() & 0o111, 0);
@@ -1636,11 +1612,11 @@ mod tests {
 
     #[test]
     fn macos_install_shell_starts_from_root_without_nested_sudo() {
-        let shell = macos_install_shell(Path::new("/safe/service-tools/clash-verge-service-install"), 20);
+        let shell = macos_install_shell(Path::new("/safe/service-tools/clash-verge-next-service-install"), 20);
 
         assert_eq!(
             shell,
-            "cd /; CLASH_VERGE_SERVICE_GID=20 '/safe/service-tools/clash-verge-service-install'"
+            "cd /; CLASH_VERGE_SERVICE_GID=20 '/safe/service-tools/clash-verge-next-service-install'"
         );
         assert!(!shell.contains("sudo"));
     }

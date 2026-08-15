@@ -22,18 +22,18 @@ notifications:
     body: Профиль повторно активирован.
   appQuit:
     title: Скорый выход
-    body: Clash Verge скоро завершит работу.
+    body: Clash Verge Next скоро завершит работу.
   appHidden:
     title: Приложение скрыто
-    body: Clash Verge работает в фоновом режиме.
+    body: Clash Verge Next работает в фоновом режиме.
   updateReady:
-    title: Обновление Clash Verge
+    title: Обновление Clash Verge Next
     body: Новая версия (v{version}) скачана и готова к установке.
     installNow: Установить сейчас
     later: Позже
 service:
-  adminInstallPrompt: Для установки службы Clash Verge требуются права администратора.
-  adminUninstallPrompt: Для удаления службы Clash Verge требуются права администратора.
+  adminInstallPrompt: Для установки службы Clash Verge Next требуются права администратора.
+  adminUninstallPrompt: Для удаления службы Clash Verge Next требуются права администратора.
 launchGuard:
   currentExeError: 'Не удалось определить расположение приложения: {error}'
   homeDirError: 'Не удалось определить домашний каталог текущего пользователя. Приложение будет закрыто: {error}'
