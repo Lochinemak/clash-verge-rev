@@ -1,7 +1,7 @@
 name: Release Build
 
 on:
-  # ! 为了避免重复发布版本，应当通过独特 git tag 触发。
+  # Releases are intentionally manual while the fork is changing frequently.
   workflow_dispatch:
     inputs:
       tag:
@@ -13,10 +13,6 @@ on:
         required: false
         default: false
         type: boolean
-  push:
-    # -rc tag 时预览发布, 跳过 telegram 通知、跳过 winget 提交、跳过 latest.json 文件更新
-    tags:
-      - 'v*.*.*'
 permissions: write-all
 env:
   CARGO_INCREMENTAL: 0
@@ -145,7 +141,7 @@ jobs:
           fi
 
           cat > release.txt << EOF
-          ⚠️ macOS application bundles in this release are unsigned and not notarized. If Gatekeeper blocks the app, run: xattr -cr "/Applications/Clash Verge.app"
+          ⚠️ macOS application bundles in this release are unsigned and not notarized. If Gatekeeper blocks the app, run: xattr -rd com.apple.quarantine "/Applications/Clash Verge.app"
 
           $UPDATE_LOGS
 
