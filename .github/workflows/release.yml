@@ -547,7 +547,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Portable Bundle
-        run: pnpm portable-fixed-webview2 ${{ matrix.target }}
+        run: |
+          # v2.5.3 and older scripts expect Cargo output below src-tauri/target.
+          # Keep the immutable release tag checked out and bridge it to the
+          # workspace-level target directory used by the current Cargo layout.
+          New-Item -ItemType Junction -Path .\src-tauri\target -Target (Resolve-Path .\target)
+          pnpm portable-fixed-webview2 ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 

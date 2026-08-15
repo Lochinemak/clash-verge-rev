@@ -26,9 +26,7 @@ const arch = target ? ARCH_MAP[target] : PROCESS_MAP[process.arch]
 async function resolvePortable() {
   if (process.platform !== 'win32') return
 
-  const releaseDir = target
-    ? `./src-tauri/target/${target}/release`
-    : `./src-tauri/target/release`
+  const releaseDir = target ? `./target/${target}/release` : `./target/release`
 
   const configDir = path.join(releaseDir, '.config')
 
@@ -101,4 +99,7 @@ async function resolvePortable() {
   })
 }
 
-resolvePortable().catch(console.error)
+resolvePortable().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})
