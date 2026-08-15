@@ -28,19 +28,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check if tag is from main branch
+      - name: Check if tag is from the fork default branch
         run: |
           TAG_REF="${GITHUB_REF##*/}"
-          echo "Checking if tag $TAG_REF is from main branch..."
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          echo "Checking if tag $TAG_REF is from default branch $DEFAULT_BRANCH..."
 
           TAG_COMMIT=$(git rev-list -n 1 $TAG_REF)
-          MAIN_COMMITS=$(git rev-list origin/main)
+          git fetch origin "$DEFAULT_BRANCH"
 
-          if echo "$MAIN_COMMITS" | grep -q "$TAG_COMMIT"; then
-            echo "✅ Tag $TAG_REF is from main branch"
+          if git merge-base --is-ancestor "$TAG_COMMIT" "origin/$DEFAULT_BRANCH"; then
+            echo "✅ Tag $TAG_REF is from $DEFAULT_BRANCH"
           else
-            echo "❌ Tag $TAG_REF is not from main branch"
-            echo "This release workflow only accepts tags from main branch."
+            echo "❌ Tag $TAG_REF is not from $DEFAULT_BRANCH"
+            echo "This release workflow only accepts tags from the fork default branch."
             exit 1
           fi
 
@@ -70,6 +71,10 @@ jobs:
     outputs:
       release_id: ${{ steps.prepare_release.outputs.id }}
     steps:
+      - name: Report unsigned macOS release
+        run: |
+          echo "::warning::Apple signing credentials are absent; macOS application bundles will be unsigned and not notarized."
+
       - name: Create or update draft release
         id: prepare_release
         uses: softprops/action-gh-release@v3
@@ -120,6 +125,8 @@ jobs:
           fi
 
           cat > release.txt << EOF
+          ⚠️ macOS application bundles in this release are unsigned and not notarized. If Gatekeeper blocks the app, run: xattr -cr "/Applications/Clash Verge.app"
+
           $UPDATE_LOGS
 
           ## 下载地址
@@ -217,7 +224,6 @@ jobs:
           workspaces: |
             . -> target
           cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Install dependencies (ubuntu only)
         if: matrix.os == 'ubuntu-22.04'
@@ -325,7 +331,6 @@ jobs:
           workspaces: |
             . -> target
           cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Install Node
         uses: actions/setup-node@v7
@@ -461,7 +466,6 @@ jobs:
           workspaces: |
             . -> target
           cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Install Node
         uses: actions/setup-node@v7
@@ -599,6 +603,8 @@ jobs:
     name: Submit to Winget
     runs-on: ubuntu-latest
     needs: [update_tag, release-update]
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -609,7 +615,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install jq
           echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
+      - name: Check Winget credentials
+        id: winget
+        shell: bash
+        run: |
+          if [ -z "$WINGET_TOKEN" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::WINGET_TOKEN is absent; skipping Winget submission."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Submit to Winget
+        if: steps.winget.outputs.enabled == 'true'
         uses: vedantmgoyal9/winget-releaser@main
         with:
           identifier: ClashVergeRev.ClashVergeRev
@@ -700,6 +717,7 @@ jobs:
         run: node scripts/telegram.mjs
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
           BUILD_TYPE: release
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}

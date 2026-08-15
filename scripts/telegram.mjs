@@ -4,8 +4,6 @@ import axios from 'axios'
 
 import { log_error, log_info, log_success } from './utils.mjs'
 
-const CHAT_ID_RELEASE = '@clash_verge_re' // 正式发布频道
-const CHAT_ID_TEST = '@vergetest' // 测试频道
 const REPOSITORY_URL = `${process.env.GITHUB_SERVER_URL || 'https://github.com'}/${
   process.env.GITHUB_REPOSITORY || 'Lochinemak/clash-verge-rev'
 }`
@@ -13,6 +11,9 @@ const REPOSITORY_URL = `${process.env.GITHUB_SERVER_URL || 'https://github.com'}
 async function sendTelegramNotification() {
   if (!process.env.TELEGRAM_BOT_TOKEN) {
     throw new Error('TELEGRAM_BOT_TOKEN is required')
+  }
+  if (!process.env.TELEGRAM_CHAT_ID) {
+    throw new Error('TELEGRAM_CHAT_ID is required')
   }
 
   const version =
@@ -28,11 +29,10 @@ async function sendTelegramNotification() {
 
   const isAutobuild =
     process.env.BUILD_TYPE === 'autobuild' || version.includes('autobuild')
-  const chatId = isAutobuild ? CHAT_ID_TEST : CHAT_ID_RELEASE
+  const chatId = process.env.TELEGRAM_CHAT_ID
   const buildType = isAutobuild ? '滚动更新版' : '正式版'
 
   log_info(`Preparing Telegram notification for ${buildType} ${version}`)
-  log_info(`Target channel: ${chatId}`)
   log_info(`Download URL: ${downloadUrl}`)
 
   // 读取发布说明和下载地址
@@ -136,13 +136,11 @@ async function sendTelegramNotification() {
         parse_mode: 'HTML',
       },
     )
-    log_success(`✅ Telegram 通知发送成功到 ${chatId}`)
+    log_success('✅ Telegram 通知发送成功')
   } catch (error) {
-    log_error(
-      `❌ Telegram 通知发送失败到 ${chatId}:`,
-      error.response?.data || error.message,
-      error,
-    )
+    const detail =
+      error.response?.data?.description || error.code || 'request failed'
+    log_error(`❌ Telegram 通知发送失败: ${detail}`)
     process.exit(1)
   }
 }

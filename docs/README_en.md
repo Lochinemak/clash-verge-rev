@@ -43,10 +43,6 @@ We provide packages for Windows (x64/x86), Linux (x64/arm64), and macOS 10.15+ (
 
 Read the [project documentation](https://clash-verge-rev.github.io/) for install steps, troubleshooting, and frequently asked questions.
 
-### Telegram Channel
-
-Join [@clash_verge_rev](https://t.me/clash_verge_re) for update announcements.
-
 ---
 
 ## Features

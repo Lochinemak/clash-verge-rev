@@ -163,7 +163,6 @@ jobs:
           workspaces: |
             . -> target
           cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Install dependencies (ubuntu only)
         if: matrix.os == 'ubuntu-22.04'
@@ -268,7 +267,6 @@ jobs:
           workspaces: |
             . -> target
           cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6.0.10
@@ -413,7 +411,6 @@ jobs:
           workspaces: |
             . -> target
           cache-all-crates: true
-          cache-workspace-crates: true
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6.0.10
@@ -587,6 +584,7 @@ jobs:
         run: node scripts/telegram.mjs
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
           BUILD_TYPE: autobuild
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}

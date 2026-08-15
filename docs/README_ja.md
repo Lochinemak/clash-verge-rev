@@ -43,10 +43,6 @@ Windows (x64/x86)、Linux (x64/arm64)、macOS 10.15+ (Intel/Apple) をサポー�
 
 詳しい導入手順やトラブルシュートは [ドキュメントサイト](https://clash-verge-rev.github.io/) を参照してください。
 
-### Telegram チャンネル
-
-更新情報は [@clash_verge_rev](https://t.me/clash_verge_re) をフォローしてください。
-
 ---
 
 ## 機能

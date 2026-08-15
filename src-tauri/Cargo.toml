@@ -25,7 +25,7 @@ clippy = ["tauri/test"]
 tracing = []
 
 [package.metadata.bundle]
-identifier = "io.github.clash-verge-rev.clash-verge-rev"
+identifier = "io.github.loch.clash-verge-next"
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
@@ -95,7 +95,7 @@ tauri-plugin-devtools = { version = "2.1.0" }
 tauri-plugin-mihomo = { git = "https://github.com/Lochinemak/tauri-plugin-mihomo", branch = "loch/dev" }
 clash_verge_logger = { git = "https://github.com/Lochinemak/clash-verge-logger", branch = "loch/dev" }
 async-trait = "0.1.92"
-clash_verge_service_ipc = { git = "https://github.com/Lochinemak/clash-verge-service-ipc.git", branch = "loch/dev", version = "2.6.1", features = [
+clash_verge_service_ipc = { git = "https://github.com/Lochinemak/clash-verge-service-ipc.git", branch = "loch/dev", version = "2.6.2", features = [
   "client",
 ] }
 arc-swap = "1.9.2"
