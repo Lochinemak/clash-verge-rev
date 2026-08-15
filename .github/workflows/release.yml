@@ -8,6 +8,11 @@ on:
         description: 'Existing release tag to build, for example v2.5.3'
         required: true
         type: string
+      source_ref:
+        description: 'Source ref to build; use loch/dev for the latest fork changes'
+        required: false
+        default: 'loch/dev'
+        type: string
       portable_only:
         description: 'Rebuild only the fixed WebView2 portable bundles'
         required: false
@@ -19,6 +24,7 @@ env:
   RUST_BACKTRACE: short
   HUSKY: 0
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref_name }}
 concurrency:
   # only allow per workflow per commit (and not pr) to run at a time
   group: '${{ github.workflow }} - ${{ github.head_ref || github.ref }}'
@@ -26,29 +32,35 @@ concurrency:
 
 jobs:
   check_tag_version:
-    name: Check Release Tag and package.json Version Consistency
+    name: Check Release Source and package.json Version Consistency
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
 
-      - name: Check if tag is from the fork default branch
+      - name: Check release source ref
         run: |
-          TAG_REF="$RELEASE_TAG"
+          SOURCE_REF="$BUILD_REF"
           DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
-          echo "Checking if tag $TAG_REF is from default branch $DEFAULT_BRANCH..."
-
-          TAG_COMMIT=$(git rev-list -n 1 $TAG_REF)
-          git fetch origin "$DEFAULT_BRANCH"
-
-          if git merge-base --is-ancestor "$TAG_COMMIT" "origin/$DEFAULT_BRANCH"; then
-            echo "✅ Tag $TAG_REF is from $DEFAULT_BRANCH"
+          if [[ "$SOURCE_REF" == "loch/dev" ]]; then
+            echo "✅ Building the explicitly allowed fork development ref: $SOURCE_REF"
+          elif [[ "$SOURCE_REF" == "$RELEASE_TAG" ]]; then
+            echo "Checking that release tag $RELEASE_TAG is from default branch $DEFAULT_BRANCH..."
+            TAG_COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
+            git fetch origin "$DEFAULT_BRANCH"
+            if git merge-base --is-ancestor "$TAG_COMMIT" "origin/$DEFAULT_BRANCH"; then
+              echo "✅ Tag $RELEASE_TAG is from $DEFAULT_BRANCH"
+            else
+              echo "❌ Tag $RELEASE_TAG is not from $DEFAULT_BRANCH"
+              echo "Use source_ref=loch/dev for a fork development build, or a tag reachable from the default branch."
+              exit 1
+            fi
           else
-            echo "❌ Tag $TAG_REF is not from $DEFAULT_BRANCH"
-            echo "This release workflow only accepts tags from the fork default branch."
+            echo "❌ Unsupported source_ref: $SOURCE_REF"
+            echo "Allowed values are loch/dev or the release tag $RELEASE_TAG."
             exit 1
           fi
 
@@ -115,7 +127,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
@@ -223,7 +235,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -337,7 +349,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -474,7 +486,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -587,7 +599,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Install Node
         uses: actions/setup-node@v7
@@ -615,7 +627,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Install Node
         uses: actions/setup-node@v7
@@ -646,7 +658,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
       - name: Get Version
         run: |
@@ -688,7 +700,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.BUILD_REF }}
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
