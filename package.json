@@ -11,6 +11,7 @@
     "dev:trace": "node scripts/dev.mjs trace",
     "dev:tauri": "cross-env RUST_BACKTRACE=full tauri dev --config src-tauri/tauri.dev.conf.json -f tauri-dev",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tauri build",
+    "package:macos-dmg": "node scripts/package-macos-dmg.mjs",
     "build:fast": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tauri build -- --profile fast-release",
     "icons:generate": "node scripts/generate-icons.mjs",
     "tauri": "tauri",

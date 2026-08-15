@@ -228,6 +228,17 @@ jobs:
           args: --target ${{ matrix.target }}
           # includeUpdaterJson: true
 
+      - name: Add macOS installation instructions
+        if: matrix.os == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for dmg in target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
+            [ -f "$dmg" ] || continue
+            node scripts/package-macos-dmg.mjs "$dmg"
+            gh release upload "$TAG_NAME" "$dmg" --clobber
+          done
+
   autobuild-arm-linux:
     name: Autobuild ARM Linux
     needs: [check_commit, update_tag]
