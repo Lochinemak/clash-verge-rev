@@ -132,14 +132,14 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: 'Clash Verge Next ${{ env.RELEASE_TAG }}'
           body: 'Draft release, will be updated later.'
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
           draft: true
           prerelease: ${{ contains(env.RELEASE_TAG, '-rc') }}
 
       - name: Preserve existing release during portable repair
         if: github.event_name == 'workflow_dispatch' && inputs.portable_only
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
 
   update_tag:
@@ -217,7 +217,7 @@ jobs:
 
       - name: Publish Release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           PRERELEASE: ${{ contains(env.RELEASE_TAG, '-rc') }}
         run: |
           release_id="${{ needs.prepare_release.outputs.release_id }}"
@@ -324,7 +324,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1.0.0
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
@@ -337,7 +337,7 @@ jobs:
       - name: Add macOS installation instructions
         if: matrix.os == 'macos-latest'
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           for dmg in target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
             [ -f "$dmg" ] || continue
@@ -498,7 +498,7 @@ jobs:
 
       - name: Upload release assets
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           gh release upload "$RELEASE_TAG" \
             target/${{ matrix.target }}/release/bundle/deb/*.deb \
@@ -579,7 +579,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1.0.0
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
@@ -613,7 +613,7 @@ jobs:
 
       - name: Upload release assets
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           $files = Get-ChildItem "target\${{ matrix.target }}\release\bundle\nsis\*setup*" | Select-Object -ExpandProperty FullName
           gh release upload "$env:RELEASE_TAG" $files --clobber
@@ -627,7 +627,7 @@ jobs:
           New-Item -ItemType Junction -Path .\src-tauri\target -Target (Resolve-Path .\target)
           pnpm portable-fixed-webview2 ${{ matrix.target }}
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
 
   release-update:
     if: ${{ !contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-rc') }}
@@ -656,7 +656,7 @@ jobs:
       - name: Release updater file
         run: pnpm updater
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
 
   release-update-for-fixed-webview2:
     if: ${{ !contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-rc') }}
@@ -684,7 +684,7 @@ jobs:
       - name: Release updater file
         run: pnpm updater-fixed-webview2
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
 
   submit-to-winget:
     if: ${{ !contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-rc') }}
