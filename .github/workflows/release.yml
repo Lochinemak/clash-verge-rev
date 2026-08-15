@@ -8,6 +8,11 @@ on:
         description: 'Existing release tag to build, for example v2.5.3'
         required: true
         type: string
+      portable_only:
+        description: 'Rebuild only the fixed WebView2 portable bundles'
+        required: false
+        default: false
+        type: boolean
   push:
     # -rc tag 时预览发布, 跳过 telegram 通知、跳过 winget 提交、跳过 latest.json 文件更新
     tags:
@@ -78,10 +83,12 @@ jobs:
       release_id: ${{ steps.prepare_release.outputs.id }}
     steps:
       - name: Report unsigned macOS release
+        if: github.event_name != 'workflow_dispatch' || !inputs.portable_only
         run: |
           echo "::warning::Apple signing credentials are absent; macOS application bundles will be unsigned and not notarized."
 
       - name: Create or update draft release
+        if: github.event_name != 'workflow_dispatch' || !inputs.portable_only
         id: prepare_release
         uses: softprops/action-gh-release@v3
         with:
@@ -91,6 +98,12 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN }}
           draft: true
           prerelease: ${{ contains(env.RELEASE_TAG, '-rc') }}
+
+      - name: Preserve existing release during portable repair
+        if: github.event_name == 'workflow_dispatch' && inputs.portable_only
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: gh release view "$RELEASE_TAG"
 
   update_tag:
     name: Update tag
@@ -192,6 +205,7 @@ jobs:
 
   release:
     name: Release Build
+    if: github.event_name != 'workflow_dispatch' || !inputs.portable_only
     needs: [prepare_release]
     strategy:
       fail-fast: false
@@ -299,6 +313,7 @@ jobs:
 
   release-for-linux-arm:
     name: Release Build for Linux ARM
+    if: github.event_name != 'workflow_dispatch' || !inputs.portable_only
     needs: [prepare_release]
     strategy:
       fail-fast: false
