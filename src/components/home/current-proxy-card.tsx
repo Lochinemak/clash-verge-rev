@@ -16,15 +16,11 @@ import {
   Box,
   Button,
   Chip,
-  ClickAwayListener,
   FormControl,
   IconButton,
   InputLabel,
   type MenuProps,
   MenuItem,
-  MenuList,
-  Paper,
-  Popper,
   Select,
   type SelectChangeEvent,
   Tooltip,
@@ -218,172 +214,6 @@ const sortProxyOptions = (
       return byDelay || a.option.name.localeCompare(b.option.name)
     })
     .map(({ option }) => option)
-}
-
-interface PersistentProxySelectProps {
-  label: string
-  groupName: string
-  value: string
-  selectedName: string
-  selectedDelay: number
-  options: ProxyOption[]
-  open: boolean
-  disabled: boolean
-  keepOpenRef: React.RefObject<HTMLElement | null>
-  onOpen: () => void
-  onClose: () => void
-  onChange: (value: string) => void
-}
-
-const PersistentProxySelect = ({
-  label,
-  groupName,
-  value,
-  selectedName,
-  selectedDelay,
-  options,
-  open,
-  disabled,
-  keepOpenRef,
-  onOpen,
-  onClose,
-  onChange,
-}: PersistentProxySelectProps) => {
-  const anchorRef = useRef<HTMLDivElement>(null)
-  const listboxId = 'current-proxy-node-listbox'
-  const labelId = 'proxy-select-label'
-
-  useEffect(() => {
-    if (!open) return
-
-    const closeFromKeyboard = (event: KeyboardEvent) => {
-      if (event.key === 'Tab') {
-        onClose()
-      } else if (event.key === 'Escape') {
-        onClose()
-        anchorRef.current
-          ?.querySelector<HTMLElement>('[role="combobox"]')
-          ?.focus()
-      }
-    }
-    document.addEventListener('keydown', closeFromKeyboard)
-    return () => document.removeEventListener('keydown', closeFromKeyboard)
-  }, [onClose, open])
-
-  return (
-    <ClickAwayListener
-      onClickAway={(event) => {
-        if (!open) return
-        const target = event.target
-        if (target instanceof Node && keepOpenRef.current?.contains(target)) {
-          return
-        }
-        onClose()
-      }}
-    >
-      <Box>
-        <FormControl ref={anchorRef} fullWidth variant="outlined" size="small">
-          <InputLabel id={labelId}>{label}</InputLabel>
-          <Select
-            labelId={labelId}
-            value={value}
-            open={false}
-            onOpen={onOpen}
-            label={label}
-            disabled={disabled}
-            renderValue={() => (
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <Typography noWrap>{selectedName}</Typography>
-                <Chip
-                  size="small"
-                  label={delayManager.formatDelay(selectedDelay)}
-                  color={convertDelayColor(selectedDelay)}
-                />
-              </Box>
-            )}
-            SelectDisplayProps={{
-              'aria-controls': open ? listboxId : undefined,
-              'aria-expanded': open ? 'true' : 'false',
-            }}
-          >
-            <MenuItem value={value}>{selectedName}</MenuItem>
-          </Select>
-        </FormControl>
-
-        <Popper
-          open={open}
-          anchorEl={anchorRef.current}
-          placement="bottom-start"
-          sx={{
-            width: anchorRef.current?.clientWidth,
-            zIndex: (theme) => theme.zIndex.modal,
-          }}
-        >
-          <Paper
-            elevation={8}
-            sx={{ maxHeight: PROXY_MENU_MAX_HEIGHT, overflow: 'auto' }}
-          >
-            <MenuList
-              id={listboxId}
-              role="listbox"
-              aria-labelledby={labelId}
-              autoFocusItem
-              variant="selectedMenu"
-            >
-              {options.map((option) => {
-                const selected = option.value === value
-                const delay = option.disabled
-                  ? -1
-                  : delayManager.getDelayFix(option.member, groupName)
-
-                return (
-                  <MenuItem
-                    key={option.value}
-                    role="option"
-                    aria-selected={selected}
-                    selected={selected}
-                    disabled={option.disabled}
-                    onClick={() => {
-                      if (!option.disabled) onChange(option.value)
-                    }}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      width: '100%',
-                      pr: 1,
-                    }}
-                  >
-                    <Typography noWrap sx={{ flex: 1, mr: 1 }}>
-                      {option.name}
-                    </Typography>
-                    {!option.disabled && (
-                      <Chip
-                        size="small"
-                        label={delayManager.formatDelay(delay)}
-                        color={convertDelayColor(delay)}
-                        sx={{
-                          minWidth: '60px',
-                          height: '22px',
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                  </MenuItem>
-                )
-              })}
-            </MenuList>
-          </Paper>
-        </Popper>
-      </Box>
-    </ClickAwayListener>
-  )
 }
 
 export const CurrentProxyCard = () => {
@@ -766,7 +596,7 @@ export const CurrentProxyCard = () => {
     refreshProxy()
   })
 
-  const handleGroupMenuClose = useCallback<NonNullable<MenuProps['onClose']>>(
+  const handleMenuClose = useCallback<NonNullable<MenuProps['onClose']>>(
     (event, reason) => {
       if (
         reason === 'backdropClick' &&
@@ -978,9 +808,10 @@ export const CurrentProxyCard = () => {
               onChange={handleGroupChange}
               open={openSelect === 'group'}
               onOpen={() => setOpenSelect('group')}
+              onClose={() => setOpenSelect(null)}
               label={t('home.components.currentProxy.labels.group')}
               disabled={isGlobalMode || isDirectMode}
-              MenuProps={{ onClose: handleGroupMenuClose }}
+              MenuProps={{ onClose: handleMenuClose }}
             >
               {selectableGroups.map((group) => (
                 <MenuItem key={group.name} value={group.name}>
@@ -991,24 +822,84 @@ export const CurrentProxyCard = () => {
           </FormControl>
 
           {/* 代理节点选择器 */}
-          <PersistentProxySelect
-            label={t('home.components.currentProxy.labels.proxy')}
-            groupName={selectedGroupName}
-            value={
-              currentOption
-                ? optionValue(currentOption.memberIndex, currentOption.member)
-                : ''
-            }
-            selectedName={selectedProxyName}
-            selectedDelay={currentDelay}
-            options={isDirectMode ? [] : proxyOptions}
-            open={openSelect === 'proxy'}
-            disabled={isDirectMode}
-            keepOpenRef={delayButtonRef}
-            onOpen={() => setOpenSelect('proxy')}
-            onClose={() => setOpenSelect(null)}
-            onChange={handleProxyChange}
-          />
+          <FormControl fullWidth variant="outlined" size="small">
+            <InputLabel id="proxy-select-label">
+              {t('home.components.currentProxy.labels.proxy')}
+            </InputLabel>
+            <Select
+              labelId="proxy-select-label"
+              value={
+                currentOption
+                  ? optionValue(currentOption.memberIndex, currentOption.member)
+                  : ''
+              }
+              open={openSelect === 'proxy'}
+              onOpen={() => setOpenSelect('proxy')}
+              onClose={() => setOpenSelect(null)}
+              onChange={(event) => handleProxyChange(event.target.value)}
+              label={t('home.components.currentProxy.labels.proxy')}
+              disabled={isDirectMode}
+              renderValue={() => (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Typography noWrap>{selectedProxyName}</Typography>
+                  <Chip
+                    size="small"
+                    label={delayManager.formatDelay(currentDelay)}
+                    color={convertDelayColor(currentDelay)}
+                  />
+                </Box>
+              )}
+              MenuProps={{
+                onClose: handleMenuClose,
+                slotProps: {
+                  paper: { sx: { maxHeight: PROXY_MENU_MAX_HEIGHT } },
+                },
+              }}
+            >
+              {proxyOptions.map((option) => {
+                const delay = option.disabled
+                  ? -1
+                  : delayManager.getDelayFix(option.member, selectedGroupName)
+
+                return (
+                  <MenuItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={option.disabled}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      width: '100%',
+                      pr: 1,
+                    }}
+                  >
+                    <Typography noWrap sx={{ flex: 1, mr: 1 }}>
+                      {option.name}
+                    </Typography>
+                    {!option.disabled && (
+                      <Chip
+                        size="small"
+                        label={delayManager.formatDelay(delay)}
+                        color={convertDelayColor(delay)}
+                        sx={{
+                          minWidth: '60px',
+                          height: '22px',
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                  </MenuItem>
+                )
+              })}
+            </Select>
+          </FormControl>
         </Box>
       ) : (
         <Box sx={{ textAlign: 'center', py: 4 }}>
