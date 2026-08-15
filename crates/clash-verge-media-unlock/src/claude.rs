@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-use super::UnlockItem;
+use super::{UnlockItem, UnlockService};
 
 const BLOCKED_CODES: [&str; 10] = ["AF", "BY", "CN", "CU", "HK", "IR", "KP", "MO", "RU", "SY"];
 
@@ -26,13 +26,13 @@ pub(super) async fn check_claude(client: &Client) -> UnlockItem {
                         "Yes"
                     };
 
-                    UnlockItem::checked_region("Claude", status, &code)
+                    UnlockItem::checked_region(UnlockService::Claude, status, &code)
                 } else {
-                    UnlockItem::checked("Claude", "Failed", None)
+                    UnlockItem::checked(UnlockService::Claude, "Failed", None)
                 }
             }
-            Err(_) => UnlockItem::checked("Claude", "Failed", None),
+            Err(_) => UnlockItem::checked(UnlockService::Claude, "Failed", None),
         },
-        Err(_) => UnlockItem::checked("Claude", "Failed", None),
+        Err(_) => UnlockItem::checked(UnlockService::Claude, "Failed", None),
     }
 }

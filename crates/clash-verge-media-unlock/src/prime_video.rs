@@ -3,12 +3,10 @@ use reqwest::Client;
 
 use clash_verge_logging::{Type, logging};
 
-use super::UnlockItem;
-
-const PRIME_VIDEO: &str = "Prime Video";
+use super::{UnlockItem, UnlockService};
 
 fn prime_video_item(status: impl Into<String>, region: Option<String>) -> UnlockItem {
-    UnlockItem::checked(PRIME_VIDEO, status, region)
+    UnlockItem::checked(UnlockService::PrimeVideo, status, region)
 }
 
 pub(super) async fn check_prime_video(client: &Client) -> UnlockItem {
@@ -48,7 +46,7 @@ pub(super) async fn check_prime_video(client: &Client) -> UnlockItem {
             }
 
             if let Some(region) = region_code {
-                return UnlockItem::checked_region(PRIME_VIDEO, "Yes", &region);
+                return UnlockItem::checked_region(UnlockService::PrimeVideo, "Yes", &region);
             }
 
             if !is_blocked {

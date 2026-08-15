@@ -3,11 +3,12 @@ use reqwest::Client;
 
 use clash_verge_logging::{Type, logging};
 
-use super::UnlockItem;
+use super::{UnlockItem, UnlockService};
 
 pub(super) async fn check_youtube_premium(client: &Client) -> UnlockItem {
     let url = "https://www.youtube.com/premium?hl=en";
-    let item = |status: &str, region: Option<String>| UnlockItem::checked("YouTube Premium", status, region);
+    let item =
+        |status: &str, region: Option<String>| UnlockItem::checked(UnlockService::YoutubePremium, status, region);
 
     match client.get(url).send().await {
         Ok(response) => {

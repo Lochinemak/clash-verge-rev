@@ -5,6 +5,41 @@ import { showNotice } from '@/services/notice-service'
 import type { ProxyViewV1 } from '@/types/proxy-view'
 import { debugLog } from '@/utils/debug'
 
+export type UnlockService =
+  | 'bilibili_china_mainland'
+  | 'bilibili_hk_mc_tw'
+  | 'chatgpt_ios'
+  | 'chatgpt_web'
+  | 'claude'
+  | 'gemini'
+  | 'youtube_premium'
+  | 'bahamut_anime'
+  | 'netflix'
+  | 'disney_plus'
+  | 'prime_video'
+  | 'spotify'
+  | 'tiktok'
+
+export interface UnlockItem {
+  service: UnlockService
+  name: string
+  status: string
+  region?: string | null
+  check_time?: string | null
+}
+
+export async function getUnlockItems() {
+  return invoke<UnlockItem[]>('get_unlock_items')
+}
+
+export async function checkMediaUnlock() {
+  return invoke<UnlockItem[]>('check_media_unlock')
+}
+
+export async function checkMediaUnlockItem(service: UnlockService) {
+  return invoke<UnlockItem>('check_media_unlock_item', { service })
+}
+
 export async function copyClashEnv() {
   return invoke<void>('copy_clash_env')
 }

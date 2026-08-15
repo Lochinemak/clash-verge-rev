@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use reqwest::Client;
 
-use super::UnlockItem;
+use super::{UnlockItem, UnlockService};
 
 pub(super) async fn check_chatgpt_combined(client: &Client) -> Vec<UnlockItem> {
     let mut results = Vec::new();
@@ -72,9 +72,13 @@ pub(super) async fn check_chatgpt_combined(client: &Client) -> Vec<UnlockItem> {
         Err(_) => "Failed",
     };
 
-    results.push(UnlockItem::checked("ChatGPT iOS", ios_status, region.clone()));
+    results.push(UnlockItem::checked(
+        UnlockService::ChatgptIos,
+        ios_status,
+        region.clone(),
+    ));
 
-    results.push(UnlockItem::checked("ChatGPT Web", web_status, region));
+    results.push(UnlockItem::checked(UnlockService::ChatgptWeb, web_status, region));
 
     results
 }

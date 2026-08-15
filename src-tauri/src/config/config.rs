@@ -253,7 +253,11 @@ impl Config {
 
         sanitize_tunnels_proxy(&mut config);
 
-        Self::runtime().await.edit_draft(|d| {
+        let runtime = Self::runtime().await;
+        let previous = runtime.latest_arc().config.clone();
+        super::MediaUnlockProxy::inject(&mut config, previous.as_ref())?;
+
+        runtime.edit_draft(|d| {
             *d = IRuntime {
                 config: Some(config),
                 exists_keys,

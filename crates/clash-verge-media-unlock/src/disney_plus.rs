@@ -3,13 +3,12 @@ use reqwest::Client;
 
 use clash_verge_logging::{Type, logging};
 
-use super::UnlockItem;
+use super::{UnlockItem, UnlockService};
 
-const DISNEY_PLUS: &str = "Disney+";
 const AUTH_HEADER: &str = "Bearer ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84";
 
 fn disney_item(status: impl Into<String>, region: Option<String>) -> UnlockItem {
-    UnlockItem::checked(DISNEY_PLUS, status, region)
+    UnlockItem::checked(UnlockService::DisneyPlus, status, region)
 }
 
 async fn fetch_main_page_region(client: &Client) -> Option<String> {
@@ -288,7 +287,7 @@ pub(super) async fn check_disney_plus(client: &Client) -> UnlockItem {
     let region = region_code.unwrap_or_default();
 
     if region == "JP" {
-        return UnlockItem::checked_region(DISNEY_PLUS, "Yes", &region);
+        return UnlockItem::checked_region(UnlockService::DisneyPlus, "Yes", &region);
     }
 
     if is_unavailable {
@@ -300,7 +299,7 @@ pub(super) async fn check_disney_plus(client: &Client) -> UnlockItem {
             "Soon",
             Some(format!("{}（即将上线）", UnlockItem::region_label(&region))),
         ),
-        Some(true) => UnlockItem::checked_region(DISNEY_PLUS, "Yes", &region),
+        Some(true) => UnlockItem::checked_region(UnlockService::DisneyPlus, "Yes", &region),
         None => disney_item(format!("Failed (Error: Unknown region status for {region})"), None),
     }
 }

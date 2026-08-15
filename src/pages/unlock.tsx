@@ -19,20 +19,19 @@ import {
   alpha,
   useTheme,
 } from '@mui/material'
-import { invoke } from '@tauri-apps/api/core'
 import { useLockFn } from 'ahooks'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BaseEmpty, BasePage } from '@/components/base'
+import {
+  checkMediaUnlock,
+  checkMediaUnlockItem,
+  getUnlockItems as fetchUnlockItems,
+  type UnlockItem,
+  type UnlockService,
+} from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
-
-interface UnlockItem {
-  name: string
-  status: string
-  region?: string | null
-  check_time?: string | null
-}
 
 const UNLOCK_RESULTS_STORAGE_KEY = 'clash_verge_unlock_results'
 const UNLOCK_RESULTS_TIME_KEY = 'clash_verge_unlock_time'
@@ -96,7 +95,7 @@ const UnlockPage = () => {
 
   const [unlockItems, setUnlockItems] = useState<UnlockItem[]>([])
   const [isCheckingAll, setIsCheckingAll] = useState(false)
-  const [loadingItems, setLoadingItems] = useState<string[]>([])
+  const [loadingItems, setLoadingItems] = useState<UnlockService[]>([])
 
   const sortItemsByName = useCallback((items: UnlockItem[]) => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name))
@@ -119,7 +118,11 @@ const UnlockPage = () => {
         const normalizedName = normalizeUnlockName(item.name)
         const matchedItem = existingMap.get(normalizedName)
         if (matchedItem) {
-          return { ...matchedItem, name: item.name }
+          return {
+            ...matchedItem,
+            service: item.service,
+            name: item.name,
+          }
         }
         return item
       })
@@ -129,7 +132,7 @@ const UnlockPage = () => {
       )
       normalizedExisting.forEach((item) => {
         const normalizedName = normalizeUnlockName(item.name)
-        if (!mergedNameSet.has(normalizedName)) {
+        if (item.service && !mergedNameSet.has(normalizedName)) {
           merged.push(item)
           mergedNameSet.add(normalizedName)
         }
@@ -183,7 +186,7 @@ const UnlockPage = () => {
       existingTime: string | null = null,
     ) => {
       try {
-        const defaultItems = await invoke<UnlockItem[]>('get_unlock_items')
+        const defaultItems = await fetchUnlockItems()
         const mergedItems = mergeUnlockItems(defaultItems, existingItems)
         const sortedItems = sortItemsByName(mergedItems)
 
@@ -204,7 +207,6 @@ const UnlockPage = () => {
       const { items: storedItems, time: storedTime } = loadResultsFromStorage()
 
       if (storedItems && storedItems.length > 0) {
-        setUnlockItems(sortItemsByName(storedItems))
         await getUnlockItems(storedItems, storedTime)
       } else {
         await getUnlockItems()
@@ -212,28 +214,11 @@ const UnlockPage = () => {
     })()
   }, [getUnlockItems, loadResultsFromStorage, sortItemsByName])
 
-  const invokeWithTimeout = async <T,>(
-    cmd: string,
-    args?: any,
-    timeout = 15000,
-  ): Promise<T> => {
-    return Promise.race([
-      invoke<T>(cmd, args),
-      new Promise<T>((_, reject) =>
-        setTimeout(
-          () =>
-            reject(new Error(t('tests.unlock.page.messages.detectionTimeout'))),
-          timeout,
-        ),
-      ),
-    ])
-  }
-
   // 执行全部项目检测
   const checkAllMedia = useLockFn(async () => {
     try {
       setIsCheckingAll(true)
-      const result = await invokeWithTimeout<UnlockItem[]>('check_media_unlock')
+      const result = await checkMediaUnlock()
       const sortedItems = sortItemsByName(dedupeUnlockItems(result))
 
       setUnlockItems(sortedItems)
@@ -250,44 +235,35 @@ const UnlockPage = () => {
   })
 
   // 检测单个流媒体服务
-  const checkSingleMedia = useLockFn(async (name: string) => {
+  const checkSingleMedia = useLockFn(async (item: UnlockItem) => {
     try {
-      setLoadingItems((prev) => [...prev, name])
-      const result = await invokeWithTimeout<UnlockItem[]>('check_media_unlock')
-      const dedupedResult = dedupeUnlockItems(result)
-
-      const normalizedTargetName = normalizeUnlockName(name)
-      const targetItem = dedupedResult.find(
-        (item: UnlockItem) =>
-          normalizeUnlockName(item.name) === normalizedTargetName,
+      setLoadingItems((prev) => [...prev, item.service])
+      const targetItem = await checkMediaUnlockItem(item.service)
+      const updatedItems = sortItemsByName(
+        dedupeUnlockItems(
+          unlockItems.map((currentItem) =>
+            currentItem.service === item.service ? targetItem : currentItem,
+          ),
+        ),
       )
 
-      if (targetItem) {
-        const updatedItems = sortItemsByName(
-          dedupeUnlockItems(
-            unlockItems.map((item: UnlockItem) =>
-              normalizeUnlockName(item.name) === normalizedTargetName
-                ? targetItem
-                : item,
-            ),
-          ),
-        )
+      setUnlockItems(updatedItems)
+      const currentTime = new Date().toLocaleString()
 
-        setUnlockItems(updatedItems)
-        const currentTime = new Date().toLocaleString()
-
-        saveResultsToStorage(updatedItems, currentTime)
-      }
-
-      setLoadingItems((prev) => prev.filter((item) => item !== name))
+      saveResultsToStorage(updatedItems, currentTime)
+      setLoadingItems((prev) =>
+        prev.filter((service) => service !== item.service),
+      )
     } catch (err: any) {
-      setLoadingItems((prev) => prev.filter((item) => item !== name))
+      setLoadingItems((prev) =>
+        prev.filter((service) => service !== item.service),
+      )
       showNotice.error(
         'tests.unlock.page.messages.detectionFailedWithName',
-        { name },
+        { name: item.name },
         err,
       )
-      console.error(`Failed to check ${name}:`, err)
+      console.error(`Failed to check ${item.name}:`, err)
     }
   })
 
@@ -339,7 +315,7 @@ const UnlockPage = () => {
           <Button
             variant="contained"
             size="small"
-            disabled={isCheckingAll}
+            disabled={isCheckingAll || loadingItems.length > 0}
             onClick={checkAllMedia}
             startIcon={
               isCheckingAll ? (
@@ -370,7 +346,7 @@ const UnlockPage = () => {
       ) : (
         <Grid container spacing={1.5} columns={{ xs: 1, sm: 2, md: 3 }}>
           {unlockItems.map((item) => (
-            <Grid size={1} key={item.name}>
+            <Grid size={1} key={item.service}>
               <Card
                 variant="outlined"
                 sx={{
@@ -413,20 +389,18 @@ const UnlockPage = () => {
                           size="small"
                           variant="outlined"
                           color="primary"
-                          disabled={
-                            loadingItems.includes(item.name) || isCheckingAll
-                          }
+                          disabled={loadingItems.length > 0 || isCheckingAll}
                           sx={{
                             minWidth: '32px',
                             width: '32px',
                             height: '32px',
                             borderRadius: '50%',
                           }}
-                          onClick={() => checkSingleMedia(item.name)}
+                          onClick={() => checkSingleMedia(item)}
                         >
                           <RefreshRounded
                             sx={{
-                              animation: loadingItems.includes(item.name)
+                              animation: loadingItems.includes(item.service)
                                 ? 'spin 1s linear infinite'
                                 : 'none',
                               '@keyframes spin': {

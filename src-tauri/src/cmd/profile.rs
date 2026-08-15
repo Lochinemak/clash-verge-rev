@@ -9,7 +9,6 @@ use crate::{
             PROFILE_WRITE_LOCK, profiles_append_item_with_filedata_safe, profiles_patch_item_safe,
             profiles_reorder_safe, profiles_save_file_safe,
         },
-        profiles_append_item_safe,
     },
     core::{CoreManager, handle, timer::Timer, tray::Tray, validate::ValidationOutcome},
     feat,
@@ -19,7 +18,11 @@ use clash_verge_draft::{Draft, SharedDraft};
 use clash_verge_logging::{Type, logging, logging_error};
 use scopeguard::defer;
 use smartstring::alias::String;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    collections::HashSet,
+    path::{Component, Path},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
@@ -29,6 +32,192 @@ fn profile_import_error(err: &anyhow::Error) -> std::string::String {
     }
 
     format!("导入订阅失败: {err:#}")
+}
+
+fn referenced_profile_files(profiles: &IProfiles) -> HashSet<String> {
+    profiles
+        .items
+        .iter()
+        .flatten()
+        .filter_map(|item| item.file.clone())
+        .collect()
+}
+
+async fn existing_profile_files() -> anyhow::Result<HashSet<String>> {
+    let profiles_dir = dirs::app_profiles_dir()?;
+    let mut entries = match tokio::fs::read_dir(&profiles_dir).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut files = HashSet::new();
+    while let Some(entry) = entries.next_entry().await? {
+        if let Some(file) = entry.file_name().to_str() {
+            files.insert(file.into());
+        }
+    }
+    Ok(files)
+}
+
+async fn rollback_failed_import(
+    profiles: &Draft<IProfiles>,
+    original: &IProfiles,
+    import_files: HashSet<String>,
+    preexisting_files: &HashSet<String>,
+) -> anyhow::Result<()> {
+    profiles
+        .with_data_modify(|_| {
+            let original = original.clone();
+            async move { Ok((original, ())) }
+        })
+        .await?;
+
+    let referenced_files = referenced_profile_files(&profiles.data_arc());
+    let profiles_dir = dirs::app_profiles_dir()?;
+    let mut cleanup_error = None;
+    for file in import_files {
+        let mut components = Path::new(file.as_str()).components();
+        if preexisting_files.contains(&file)
+            || referenced_files.contains(&file)
+            || !matches!(
+                (components.next(), components.next()),
+                (Some(Component::Normal(_)), None)
+            )
+        {
+            continue;
+        }
+        if let Err(error) = tokio::fs::remove_file(profiles_dir.join(file.as_str())).await
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            logging!(warn, Type::Cmd, "[导入订阅] 清理回滚配置文件失败: {file} - {error}");
+            cleanup_error.get_or_insert_with(|| anyhow::anyhow!("failed to remove profile file {file}: {error}"));
+        }
+    }
+    cleanup_error.map_or(Ok(()), Err)
+}
+
+enum ImportApplyError {
+    Validation(ValidationOutcome),
+    Other {
+        error: anyhow::Error,
+        restore_persistence: bool,
+    },
+}
+
+async fn restore_failed_import_persistence(original: &IProfiles, runtime_changed: bool) -> anyhow::Result<()> {
+    if !runtime_changed {
+        return original.save_file().await;
+    }
+
+    match CoreManager::global()
+        .update_config_forced_with_profiles(original, original)
+        .await?
+    {
+        Ok(guard) => {
+            profiles::activate_selected_nodes()?;
+            drop(guard);
+            Ok(())
+        }
+        Err(outcome) => Err(anyhow::anyhow!(
+            "failed to restore previous profile configuration: {outcome}"
+        )),
+    }
+}
+
+async fn download_profile_for_import(
+    url: &str,
+    option: Option<&PrfOption>,
+    profiles: &Draft<IProfiles>,
+    original: &IProfiles,
+    original_files: &HashSet<String>,
+    preexisting_files: &HashSet<String>,
+) -> CmdResult<PrfItem> {
+    // 直接依赖 PrfItem::from_url 自身的超时/重试逻辑，不再使用 tokio::time::timeout 包裹
+    match PrfItem::from_url(url, None, None, option).await {
+        Ok(item) => {
+            logging!(info, Type::Cmd, "[导入订阅] 下载完成，开始保存配置");
+            Ok(item)
+        }
+        Err(error) => {
+            let import_files = referenced_profile_files(&profiles.data_arc())
+                .difference(original_files)
+                .cloned()
+                .collect();
+            if let Err(rollback_error) =
+                rollback_failed_import(profiles, original, import_files, preexisting_files).await
+            {
+                logging!(error, Type::Cmd, "[导入订阅] 下载失败后回滚配置失败: {rollback_error}");
+                return Err(coded_error(
+                    "PROFILE_IMPORT_FAILED",
+                    format!("{}; rollback failed: {rollback_error:#}", profile_import_error(&error)),
+                ));
+            }
+            logging!(error, Type::Cmd, "[导入订阅] 下载失败: {error}");
+            Err(coded_error("PROFILE_IMPORT_FAILED", profile_import_error(&error)))
+        }
+    }
+}
+
+async fn handle_import_transaction_error(
+    error: anyhow::Error,
+    profiles: &Draft<IProfiles>,
+    original: &IProfiles,
+    import_files: HashSet<String>,
+    preexisting_files: &HashSet<String>,
+    runtime_changed: bool,
+) -> CmdResult {
+    logging!(error, Type::Cmd, "[导入订阅] 保存并应用配置失败: {error}");
+    let rollback_result = match rollback_failed_import(profiles, original, import_files, preexisting_files).await {
+        Ok(()) => restore_failed_import_persistence(original, runtime_changed).await,
+        Err(error) => Err(error),
+    };
+    if let Err(rollback_error) = rollback_result {
+        logging!(error, Type::Cmd, "[导入订阅] 保存失败后回滚配置失败: {rollback_error}");
+        return Err(coded_error(
+            "PROFILE_IMPORT_FAILED",
+            format!("{error:#}; rollback failed: {rollback_error:#}"),
+        ));
+    }
+    Err(coded_error("PROFILE_IMPORT_FAILED", error))
+}
+
+async fn handle_import_apply_error(
+    error: ImportApplyError,
+    profiles: &Draft<IProfiles>,
+    original: &IProfiles,
+    import_files: HashSet<String>,
+    preexisting_files: &HashSet<String>,
+) -> CmdResult {
+    if let Err(rollback_error) = rollback_failed_import(profiles, original, import_files, preexisting_files).await {
+        logging!(error, Type::Cmd, "[导入订阅] 应用失败后清理配置失败: {rollback_error}");
+        return Err(coded_error("PROFILE_IMPORT_FAILED", rollback_error));
+    }
+    match error {
+        ImportApplyError::Validation(outcome) => {
+            logging!(warn, Type::Cmd, "[导入订阅] 应用配置失败: {outcome}");
+            handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
+            Err(coded_error("PROFILE_IMPORT_FAILED", outcome))
+        }
+        ImportApplyError::Other {
+            error,
+            restore_persistence,
+        } => {
+            if restore_persistence && let Err(rollback_error) = restore_failed_import_persistence(original, true).await
+            {
+                logging!(
+                    error,
+                    Type::Cmd,
+                    "[导入订阅] 应用错误后恢复运行时失败: {rollback_error}"
+                );
+                return Err(coded_error(
+                    "PROFILE_IMPORT_FAILED",
+                    format!("{error:#}; rollback failed: {rollback_error:#}"),
+                ));
+            }
+            logging!(error, Type::Cmd, "[导入订阅] 保存并应用配置失败: {error}");
+            Err(coded_error("PROFILE_IMPORT_FAILED", error))
+        }
+    }
 }
 
 #[tauri::command]
@@ -69,31 +258,119 @@ pub async fn enhance_profiles() -> CmdResult<ValidationOutcome> {
 pub async fn import_profile(url: std::string::String, option: Option<PrfOption>) -> CmdResult {
     logging!(info, Type::Cmd, "[导入订阅] 开始导入: {}", help::mask_url(&url));
 
-    // 直接依赖 PrfItem::from_url 自身的超时/重试逻辑，不再使用 tokio::time::timeout 包裹
-    let item = &mut match PrfItem::from_url(&url, None, None, option.as_ref()).await {
-        Ok(it) => {
-            logging!(info, Type::Cmd, "[导入订阅] 下载完成，开始保存配置");
-            it
-        }
-        Err(e) => {
-            logging!(error, Type::Cmd, "[导入订阅] 下载失败: {}", e);
-            return Err(coded_error("PROFILE_IMPORT_FAILED", profile_import_error(&e)));
+    // `from_url` also creates the default enhancement profiles, so the write lock and rollback
+    // snapshot must cover downloading rather than only the final remote-profile append.
+    let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
+    let profiles = Config::profiles().await;
+    let original = (**profiles.data_arc()).clone();
+    let original_files = referenced_profile_files(&original);
+    let preexisting_files = existing_profile_files()
+        .await
+        .map_err(|error| coded_error("PROFILE_IMPORT_FAILED", error))?;
+
+    let mut item = download_profile_for_import(
+        &url,
+        option.as_ref(),
+        &profiles,
+        &original,
+        &original_files,
+        &preexisting_files,
+    )
+    .await?;
+    let imported_uid = item.uid.clone();
+    let candidate_uid = imported_uid.clone();
+    let runtime_changed = original.current.is_none();
+    let imported_file = item.file.clone();
+    let mut import_files: HashSet<String> = referenced_profile_files(&profiles.data_arc())
+        .difference(&original_files)
+        .cloned()
+        .collect();
+    import_files.extend(imported_file.iter().cloned());
+    let rollback = original.clone();
+    let runtime_rollback = original.clone();
+
+    let result = match profiles
+        .with_data_modify(|mut candidate| async move {
+            if let Err(error) = candidate.append_item(&mut item).await {
+                return Ok((
+                    rollback,
+                    Err(ImportApplyError::Other {
+                        error,
+                        restore_persistence: false,
+                    }),
+                ));
+            }
+            let should_update = candidate_uid
+                .as_ref()
+                .is_some_and(|uid| candidate.is_current_profile_index(uid));
+            let guard = if should_update {
+                match CoreManager::global()
+                    .update_config_forced_with_profiles(&candidate, &runtime_rollback)
+                    .await
+                {
+                    Ok(Ok(guard)) => Some(guard),
+                    Ok(Err(outcome)) => {
+                        return Ok((rollback, Err(ImportApplyError::Validation(outcome))));
+                    }
+                    Err(error) => {
+                        return Ok((
+                            rollback,
+                            Err(ImportApplyError::Other {
+                                error,
+                                restore_persistence: true,
+                            }),
+                        ));
+                    }
+                }
+            } else {
+                if let Err(error) = candidate.save_file().await {
+                    return Ok((
+                        rollback,
+                        Err(ImportApplyError::Other {
+                            error,
+                            restore_persistence: false,
+                        }),
+                    ));
+                }
+                None
+            };
+            Ok((candidate, Ok((should_update, guard))))
+        })
+        .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            return handle_import_transaction_error(
+                error,
+                &profiles,
+                &original,
+                import_files,
+                &preexisting_files,
+                runtime_changed,
+            )
+            .await;
         }
     };
-
-    if let Err(e) = profiles_append_item_safe(item).await {
-        logging!(error, Type::Cmd, "[导入订阅] 保存配置失败: {}", e);
-        return Err(coded_error("PROFILE_IMPORT_FAILED", e));
+    let (should_update, config_update_guard) = match result {
+        Ok(result) => result,
+        Err(error) => {
+            return handle_import_apply_error(error, &profiles, &original, import_files, &preexisting_files).await;
+        }
+    };
+    if should_update {
+        logging_error!(Type::Config, profiles::activate_selected_nodes());
     }
+    drop(config_update_guard);
+    drop(profile_write_guard);
 
-    if let Err(e) = profiles_save_file_safe().await {
-        logging!(error, Type::Cmd, "[导入订阅] 保存配置文件失败: {}", e);
-        return Err(coded_error("PROFILE_IMPORT_FAILED", e));
-    }
     logging!(info, Type::Cmd, "[导入订阅] 配置文件保存成功");
     logging_error!(Type::Timer, Timer::global().refresh().await);
 
-    if let Some(uid) = &item.uid {
+    if should_update {
+        handle::Handle::refresh_clash();
+    }
+
+    if let Some(uid) = imported_uid.as_ref() {
         logging!(info, Type::Cmd, "[导入订阅] 发送配置变更通知: {}", uid);
         handle::Handle::notify_profile_changed(uid);
     }

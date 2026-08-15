@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri_plugin_mihomo::models::{Proxies, ProxyType};
-use tokio::{fs, task::JoinHandle};
+use tokio::{fs, io::AsyncWriteExt as _, task::JoinHandle};
 
 pub(crate) static PROFILE_WRITE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -222,9 +222,17 @@ impl IProfiles {
                 .ok_or_else(|| anyhow::anyhow!("file field is required when file_data is provided"))?;
             let path = dirs::app_profiles_dir()?.join(file.as_str());
 
-            fs::write(&path, file_data.as_bytes())
+            let mut profile_file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
                 .await
-                .with_context(|| format!("failed to write to file \"{file}\""))?;
+                .with_context(|| format!("failed to create profile file \"{file}\""))?;
+            if let Err(error) = profile_file.write_all(file_data.as_bytes()).await {
+                drop(profile_file);
+                let _ = fs::remove_file(&path).await;
+                return Err(error).with_context(|| format!("failed to write to file \"{file}\""));
+            }
         }
 
         if self.current.is_none() && (item.itype == Some("remote".into()) || item.itype == Some("local".into())) {
