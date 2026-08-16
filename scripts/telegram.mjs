@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 
 import axios from 'axios'
 
@@ -27,10 +27,22 @@ async function sendTelegramNotification() {
     process.env.DOWNLOAD_URL ||
     `${REPOSITORY_URL}/releases/download/v${version}`
 
-  const isAutobuild =
-    process.env.BUILD_TYPE === 'autobuild' || version.includes('autobuild')
+  const requestedBuildType = process.env.BUILD_TYPE?.toLowerCase()
+  const prereleaseChannel = ['alpha', 'nightly', 'autobuild'].includes(
+    requestedBuildType,
+  )
+    ? requestedBuildType
+    : version.includes('nightly')
+      ? 'nightly'
+      : version.includes('alpha')
+        ? 'alpha'
+        : version.includes('autobuild')
+          ? 'autobuild'
+          : null
   const chatId = process.env.TELEGRAM_CHAT_ID
-  const buildType = isAutobuild ? '滚动更新版' : '正式版'
+  const buildType = prereleaseChannel
+    ? `${prereleaseChannel === 'nightly' ? 'Nightly' : prereleaseChannel === 'alpha' ? 'Alpha' : '滚动更新'}版`
+    : '正式版'
 
   log_info(`Preparing Telegram notification for ${buildType} ${version}`)
   log_info(`Download URL: ${downloadUrl}`)
@@ -67,7 +79,7 @@ async function sendTelegramNotification() {
         } else {
           let processedLine = line.replace(
             /\[([^\]]+)\]\(([^)]+)\)/g,
-            (match, text, url) => {
+            (_match, text, url) => {
               const encodedUrl = encodeURI(url)
               return `<a href="${encodedUrl}">${text}</a>`
             },
@@ -116,9 +128,11 @@ async function sendTelegramNotification() {
     convertMarkdownToTelegramHTML(releaseContent),
   )
 
-  const releaseTitle = isAutobuild ? '滚动更新版发布' : '正式发布'
-  const encodedVersion = encodeURIComponent(version)
-  const releaseTag = isAutobuild ? 'autobuild' : `v${version}`
+  const releaseTitle = prereleaseChannel ? `${buildType}发布` : '正式发布'
+  const releaseTag =
+    process.env.RELEASE_TAG ||
+    (prereleaseChannel ? prereleaseChannel : `v${version}`)
+  const encodedReleaseTag = encodeURIComponent(releaseTag)
   const content = `<b>🎉 <a href="${REPOSITORY_URL}/releases/tag/${releaseTag}">Clash Verge Next v${version}</a> ${releaseTitle}</b>\n\n${formattedContent}`
 
   // 发送到 Telegram
@@ -130,7 +144,7 @@ async function sendTelegramNotification() {
         text: content,
         link_preview_options: {
           is_disabled: false,
-          url: `${REPOSITORY_URL}/releases/tag/v${encodedVersion}`,
+          url: `${REPOSITORY_URL}/releases/tag/${encodedReleaseTag}`,
           prefer_large_media: true,
         },
         parse_mode: 'HTML',

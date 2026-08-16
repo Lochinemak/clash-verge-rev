@@ -3,7 +3,7 @@ name: Release Build
 on:
   push:
     branches:
-      - loch/dev
+      - dev
   # Manual runs remain available for rebuilding an existing release or a
   # portable-only repair.
   workflow_dispatch:
@@ -28,11 +28,11 @@ env:
   RUST_BACKTRACE: short
   HUSKY: 0
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
-  BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref_name }}
+  BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
 concurrency:
-  # only allow per workflow per commit (and not pr) to run at a time
+  # Stable releases must finish in order; a later dev push must not cancel one.
   group: '${{ github.workflow }} - ${{ github.head_ref || github.ref }}'
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: false
 
 jobs:
   check_tag_version:
@@ -40,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.resolve_release_tag.outputs.release_tag }}
+      should_run: ${{ steps.check_existing_release.outputs.should_run }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -55,7 +56,12 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             RELEASE_TAG="$INPUT_TAG"
           else
-            RELEASE_TAG="v$(jq -r .version package.json)"
+            PACKAGE_VERSION=$(jq -r .version package.json)
+            if ! [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "❌ Automatic stable releases require a plain X.Y.Z package.json version; got '$PACKAGE_VERSION'."
+              exit 1
+            fi
+            RELEASE_TAG="v$PACKAGE_VERSION"
           fi
 
           if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "vnull" ]]; then
@@ -71,7 +77,13 @@ jobs:
         run: |
           SOURCE_REF="$BUILD_REF"
           DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
-          if [[ "$SOURCE_REF" == "loch/dev" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            if [[ "$SOURCE_REF" != "$GITHUB_SHA" ]]; then
+              echo "❌ Automatic release source $SOURCE_REF does not match triggering commit $GITHUB_SHA"
+              exit 1
+            fi
+            echo "✅ Building the exact triggering dev commit: $SOURCE_REF"
+          elif [[ "$SOURCE_REF" == "loch/dev" ]]; then
             echo "✅ Building the explicitly allowed fork development ref: $SOURCE_REF"
           elif [[ "$SOURCE_REF" == "$RELEASE_TAG" ]]; then
             echo "Checking that release tag $RELEASE_TAG is from default branch $DEFAULT_BRANCH..."
@@ -109,10 +121,42 @@ jobs:
 
           echo "✅ Tag and package.json version are consistent."
 
+      - name: Skip an existing automatic release
+        id: check_existing_release
+        env:
+          API_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Manual rebuild/repair requested; existing-release gate is bypassed."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            HTTP_STATUS=$(curl --silent --show-error --output /tmp/release.json \
+              --write-out '%{http_code}' \
+              -H "Authorization: Bearer $API_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")
+            case "$HTTP_STATUS" in
+              200)
+                echo "::notice::Release $RELEASE_TAG already exists. Bump package.json before the next dev release."
+                echo "should_run=false" >> "$GITHUB_OUTPUT"
+                ;;
+              404)
+                echo "Release $RELEASE_TAG does not exist; continuing."
+                echo "should_run=true" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "::error::Unable to check release $RELEASE_TAG (GitHub API HTTP $HTTP_STATUS)."
+                exit 1
+                ;;
+            esac
+          fi
+
   prepare_release:
     name: Prepare Draft Release
     runs-on: ubuntu-latest
     needs: [check_tag_version]
+    if: ${{ needs.check_tag_version.outputs.should_run == 'true' }}
     env:
       RELEASE_TAG: ${{ needs.check_tag_version.outputs.release_tag }}
     outputs:
@@ -130,6 +174,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ env.BUILD_REF }}
           name: 'Clash Verge Next ${{ env.RELEASE_TAG }}'
           body: 'Draft release, will be updated later.'
           token: ${{ secrets.RELEASE_TOKEN || github.token }}

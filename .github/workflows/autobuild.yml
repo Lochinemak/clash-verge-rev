@@ -1,39 +1,107 @@
-name: Auto Build
+name: Prerelease Build
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Rolling prerelease channel to build'
+        required: true
+        default: 'alpha'
+        type: choice
+        options:
+          - alpha
+          - nightly
+      force_build:
+        description: 'Build even when build-related code is unchanged'
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - loch/dev
   schedule:
-    # UTC+8 12:00, 18:00 -> UTC 4:00, 10:00
-    - cron: '0 4,10 * * *'
+    # 04:00 Asia/Singapore
+    - cron: '0 20 * * *'
 permissions: write-all
 env:
-  TAG_NAME: autobuild
-  TAG_CHANNEL: AutoBuild
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
   HUSKY: 0
 concurrency:
-  group: '${{ github.workflow }} - ${{ github.head_ref || github.ref }}'
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: "${{ github.workflow }}-${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'workflow_dispatch' && inputs.channel || 'alpha' }}"
+  cancel-in-progress: ${{ (github.event_name == 'schedule' && 'nightly' || github.event_name == 'workflow_dispatch' && inputs.channel || 'alpha') == 'alpha' }}
 
 jobs:
+  resolve_source:
+    name: Resolve Prerelease Source
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.resolve.outputs.channel }}
+      tag_name: ${{ steps.resolve.outputs.tag_name }}
+      tag_channel: ${{ steps.resolve.outputs.tag_channel }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || 'loch/dev' }}
+          fetch-depth: 1
+
+      - name: Resolve channel and exact commit
+        id: resolve
+        env:
+          REQUESTED_CHANNEL: ${{ inputs.channel }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            CHANNEL=nightly
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            CHANNEL="$REQUESTED_CHANNEL"
+          else
+            CHANNEL=alpha
+          fi
+
+          case "$CHANNEL" in
+            alpha) TAG_CHANNEL=Alpha ;;
+            nightly) TAG_CHANNEL=Nightly ;;
+            *) echo "❌ Unsupported channel: $CHANNEL"; exit 1 ;;
+          esac
+
+          SOURCE_SHA=$(git rev-parse HEAD)
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "tag_channel=$TAG_CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "source_ref=loch/dev" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Resolved $CHANNEL from loch/dev at $SOURCE_SHA"
+
   check_commit:
     name: Check Commit Needs Build
+    needs: resolve_source
     uses: ./.github/workflows/check-commit-needs-build.yml
     with:
-      tag_name: autobuild
-      force_build: ${{ github.event_name == 'workflow_dispatch' }}
+      channel: ${{ needs.resolve_source.outputs.channel }}
+      tag_name: ${{ needs.resolve_source.outputs.tag_name }}
+      source_ref: ${{ needs.resolve_source.outputs.source_ref }}
+      source_sha: ${{ needs.resolve_source.outputs.source_sha }}
+      force_build: ${{ github.event_name == 'workflow_dispatch' && inputs.force_build }}
 
   update_tag:
-    name: Update tag
+    name: Prepare Rolling Release
     runs-on: ubuntu-latest
-    needs: check_commit
+    needs: [resolve_source, check_commit]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    env:
+      TAG_NAME: ${{ needs.resolve_source.outputs.tag_name }}
+      TAG_CHANNEL: ${{ needs.resolve_source.outputs.tag_channel }}
     outputs:
       release_id: ${{ steps.upload_release.outputs.id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          fetch-depth: 0
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
@@ -53,15 +121,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Release AutoBuild Version
-        run: pnpm release-version autobuild-latest
+      - name: Set prerelease version
+        run: pnpm release-version "${{ needs.check_commit.outputs.build_version }}"
 
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
           VERSION=$(jq -r .version package.json)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL=${{ github.server_url }}/${{ github.repository }}/releases/download/autobuild" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}" >> $GITHUB_ENV
         shell: bash
 
       - run: |
@@ -105,27 +173,20 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ needs.resolve_source.outputs.source_sha }}
           name: 'Clash Verge Next ${{ env.TAG_CHANNEL }}'
           body_path: release.txt
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: false
 
-  clean_old_assets:
-    name: Clean Old Release Assets
-    needs: [check_commit, update_tag]
-    if: ${{ needs.check_commit.outputs.should_run == 'true' && needs.update_tag.result == 'success' }}
-
-    uses: ./.github/workflows/clean-old-assets.yml
-    with:
-      tag_name: autobuild
-      dry_run: false
-
   autobuild-x86-windows-macos-linux:
-    name: Autobuild x86 Windows, MacOS and Linux
-    needs: [check_commit, update_tag]
+    name: Prerelease x86 Windows, MacOS and Linux
+    needs: [resolve_source, check_commit, update_tag]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    env:
+      TAG_NAME: ${{ needs.resolve_source.outputs.tag_name }}
+      TAG_CHANNEL: ${{ needs.resolve_source.outputs.tag_channel }}
     strategy:
       fail-fast: false
       matrix:
@@ -144,6 +205,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          fetch-depth: 0
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -195,7 +259,7 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
-        run: pnpm release-version autobuild-latest
+        run: pnpm release-version "${{ needs.check_commit.outputs.build_version }}"
 
       - name: Add Rust Target
         run: |
@@ -234,9 +298,12 @@ jobs:
           done
 
   autobuild-arm-linux:
-    name: Autobuild ARM Linux
-    needs: [check_commit, update_tag]
+    name: Prerelease ARM Linux
+    needs: [resolve_source, check_commit, update_tag]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    env:
+      TAG_NAME: ${{ needs.resolve_source.outputs.tag_name }}
+      TAG_CHANNEL: ${{ needs.resolve_source.outputs.tag_channel }}
     strategy:
       fail-fast: false
       matrix:
@@ -253,6 +320,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          fetch-depth: 0
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -298,7 +368,7 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
-        run: pnpm release-version autobuild-latest
+        run: pnpm release-version "${{ needs.check_commit.outputs.build_version }}"
 
       - name: 'Setup for linux'
         run: |-
@@ -386,9 +456,12 @@ jobs:
             target/${{ matrix.target }}/release/bundle/rpm/*.rpm
 
   autobuild-x86-arm-windows_webview2:
-    name: Autobuild x86 and ARM Windows with WebView2
-    needs: [check_commit, update_tag]
+    name: Prerelease x86 and ARM Windows with WebView2
+    needs: [resolve_source, check_commit, update_tag]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    env:
+      TAG_NAME: ${{ needs.resolve_source.outputs.tag_name }}
+      TAG_CHANNEL: ${{ needs.resolve_source.outputs.tag_channel }}
     strategy:
       fail-fast: false
       matrix:
@@ -403,6 +476,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          fetch-depth: 0
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target }}
@@ -442,7 +518,7 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
-        run: pnpm release-version autobuild-latest
+        run: pnpm release-version "${{ needs.check_commit.outputs.build_version }}"
 
       - name: Download WebView2 Runtime
         run: |
@@ -505,12 +581,53 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  finalize_tag:
+    name: Finalize Rolling Tag
+    runs-on: ubuntu-latest
+    needs:
+      [
+        resolve_source,
+        check_commit,
+        autobuild-x86-windows-macos-linux,
+        autobuild-arm-linux,
+        autobuild-x86-arm-windows_webview2,
+      ]
+    if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    env:
+      TAG_NAME: ${{ needs.resolve_source.outputs.tag_name }}
+      SOURCE_SHA: ${{ needs.resolve_source.outputs.source_sha }}
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Move rolling tag to the completed build
+        run: |
+          git tag --force "$TAG_NAME" "$SOURCE_SHA"
+          git push origin "refs/tags/$TAG_NAME" --force
+
+  clean_old_assets:
+    name: Clean Old Release Assets
+    needs: [resolve_source, check_commit, finalize_tag]
+    if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    uses: ./.github/workflows/clean-old-assets.yml
+    with:
+      tag_name: ${{ needs.resolve_source.outputs.tag_name }}
+      current_version: ${{ needs.check_commit.outputs.build_version }}
+      source_ref: ${{ needs.resolve_source.outputs.source_sha }}
+      dry_run: false
+
   notify-telegram:
     name: Notify Telegram
     runs-on: ubuntu-latest
     needs:
       [
+        resolve_source,
+        check_commit,
         update_tag,
+        clean_old_assets,
         autobuild-x86-windows-macos-linux,
         autobuild-arm-linux,
         autobuild-x86-arm-windows_webview2,
@@ -518,6 +635,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          fetch-depth: 0
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
@@ -537,15 +657,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Release AutoBuild Version
-        run: pnpm release-version autobuild-latest
+      - name: Set prerelease version
+        run: pnpm release-version "${{ needs.check_commit.outputs.build_version }}"
 
       - name: Get Version and Release Info
         run: |
           sudo apt-get update
           sudo apt-get install jq
           echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL=${{ github.server_url }}/${{ github.repository }}/releases/download/autobuild" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=${{ github.server_url }}/${{ github.repository }}/releases/download/${{ needs.resolve_source.outputs.tag_name }}" >> $GITHUB_ENV
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
       - name: Generate release.txt
@@ -590,6 +710,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
-          BUILD_TYPE: autobuild
+          BUILD_TYPE: ${{ needs.resolve_source.outputs.channel }}
+          RELEASE_TAG: ${{ needs.resolve_source.outputs.tag_name }}
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}

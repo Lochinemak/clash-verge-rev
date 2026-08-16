@@ -6,10 +6,12 @@
  *
  * <version> can be:
  *   - A full semver version (e.g., 1.2.3, v1.2.3, 1.2.3-beta, v1.2.3+build)
- *   - A tag: "alpha", "beta", "rc", "autobuild", "autobuild-latest", or "deploytest"
+ *   - A tag: "alpha", "beta", "rc", "alpha-latest", "nightly-latest", "autobuild", "autobuild-latest", or "deploytest"
  *     - "alpha", "beta", "rc": Appends the tag to the current base version (e.g., 1.2.3-beta)
  *     - "autobuild": Appends a timestamped autobuild tag (e.g., 1.2.3+autobuild.2406101530)
  *     - "autobuild-latest": Appends an autobuild tag with latest Tauri commit (e.g., 1.2.3+autobuild.0614.a1b2c3d)
+ *     - "alpha-latest" / "nightly-latest": Appends a sortable prerelease tag
+ *       with the latest Tauri commit (e.g., 1.2.3-alpha.20260816.t153045.a1b2c3d)
  *     - "deploytest": Appends a timestamped deploytest tag (e.g., 1.2.3+deploytest.2406101530)
  *
  * Examples:
@@ -18,6 +20,8 @@
  *   pnpm release-version beta
  *   pnpm release-version autobuild
  *   pnpm release-version autobuild-latest
+ *   pnpm release-version alpha-latest
+ *   pnpm release-version nightly-latest
  *   pnpm release-version deploytest
  *
  * The script will:
@@ -29,9 +33,9 @@
  * Errors are logged and the process exits with code 1 on failure.
  */
 
-import { execSync } from 'child_process'
-import fs from 'fs/promises'
-import path from 'path'
+import { execSync } from 'node:child_process'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 
 import { program } from 'commander'
 
@@ -103,12 +107,36 @@ function generateShortTimestamp(withCommit = false, useTauriCommit = false) {
 }
 
 /**
+ * Generate a sortable timestamp in Asia/Singapore (YYYYMMDD.tHHMMSS).
+ * @returns {string}
+ */
+function generatePrereleaseTimestamp() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Singapore',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  })
+  const values = Object.fromEntries(
+    formatter
+      .formatToParts(new Date())
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  )
+  return `${values.year}${values.month}${values.day}.t${values.hour}${values.minute}${values.second}`
+}
+
+/**
  * 验证版本号格式
  * @param {string} version
  * @returns {boolean}
  */
 function isValidVersion(version) {
-  return /^v?\d+\.\d+\.\d+(-(alpha|beta|rc)(\.\d+)?)?(\+[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$/i.test(
+  return /^v?\d+\.\d+\.\d+(-(alpha|beta|rc|nightly)(\.[a-zA-Z0-9-]+)*)?(\+[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$/i.test(
     version,
   )
 }
@@ -128,9 +156,8 @@ function normalizeVersion(version) {
  * @returns {string}
  */
 function getBaseVersion(version) {
-  let base = version.replace(/-(alpha|beta|rc)(\.\d+)?/i, '')
-  base = base.replace(/\+[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*/g, '')
-  return base
+  const match = version.match(/^v?(\d+\.\d+\.\d+)/)
+  return match ? match[1] : version
 }
 
 /**
@@ -266,6 +293,8 @@ async function main(versionArg) {
       'rc',
       'autobuild',
       'autobuild-latest',
+      'alpha-latest',
+      'nightly-latest',
       'deploytest',
     ]
 
@@ -281,6 +310,13 @@ async function main(versionArg) {
         // 格式: 2.3.0+autobuild.1004.a1b2c3d (使用最新 Tauri 提交)
         const latestTauriCommit = getLatestTauriCommit()
         newVersion = `${baseVersion}+autobuild.${generateShortTimestamp()}.${latestTauriCommit}`
+      } else if (
+        versionArg.toLowerCase() === 'alpha-latest' ||
+        versionArg.toLowerCase() === 'nightly-latest'
+      ) {
+        const channel = versionArg.toLowerCase().replace('-latest', '')
+        const latestTauriCommit = getLatestTauriCommit()
+        newVersion = `${baseVersion}-${channel}.${generatePrereleaseTimestamp()}.${latestTauriCommit}`
       } else if (versionArg.toLowerCase() === 'deploytest') {
         // 格式: 2.3.0+deploytest.1004.cc39b27
         // 使用 Tauri 相关的最新 commit hash

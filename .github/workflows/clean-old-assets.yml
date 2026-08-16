@@ -4,9 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag name to clean (default: autobuild)'
+        description: 'Rolling release tag to clean'
         required: false
-        default: 'autobuild'
+        default: 'alpha'
+        type: string
+      current_version:
+        description: 'Asset version to preserve; latest.json is used when omitted'
+        required: false
+        type: string
+      source_ref:
+        description: 'Source ref used only as a final version fallback'
+        required: false
+        default: 'loch/dev'
         type: string
       dry_run:
         description: 'Dry run mode (only show what would be deleted)'
@@ -16,9 +25,18 @@ on:
   workflow_call:
     inputs:
       tag_name:
-        description: 'Release tag name to clean (default: autobuild)'
+        description: 'Rolling release tag to clean'
         required: false
-        default: 'autobuild'
+        default: 'alpha'
+        type: string
+      current_version:
+        description: 'Asset version to preserve'
+        required: false
+        type: string
+      source_ref:
+        description: 'Exact source ref used only as a version fallback'
+        required: false
+        default: 'loch/dev'
         type: string
       dry_run:
         description: 'Dry run mode (only show what would be deleted)'
@@ -26,195 +44,82 @@ on:
         default: false
         type: boolean
 
-permissions: write-all
-
-env:
-  TAG_NAME: ${{ inputs.tag_name || 'autobuild' }}
-  TAG_CHANNEL: AutoBuild
+permissions:
+  contents: write
 
 jobs:
-  check_current_version:
-    name: Check Current Version and Commit
-    runs-on: ubuntu-latest
-    outputs:
-      current_version: ${{ steps.check.outputs.current_version }}
-      last_tauri_commit: ${{ steps.check.outputs.last_tauri_commit }}
-      autobuild_version: ${{ steps.check.outputs.autobuild_version }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 50
-
-      - name: Get current version and find last Tauri commit
-        id: check
-        run: |
-          CURRENT_VERSION=$(cat package.json | jq -r '.version')
-          echo "📦 Current version: $CURRENT_VERSION"
-
-          # Find the last commit that changed Tauri-related files
-          echo "🔍 Finding last commit with Tauri-related changes..."
-
-          # Define patterns for Tauri-related files
-          TAURI_PATTERNS="src/ src-tauri/src src-tauri/Cargo.toml Cargo.lock src-tauri/tauri.*.conf.json src-tauri/build.rs src-tauri/capabilities"
-
-          # Get the last commit that changed any of these patterns (excluding build artifacts)
-          LAST_TAURI_COMMIT=""
-          for commit in $(git rev-list HEAD --max-count=50); do
-            # Check if this commit changed any Tauri-related files
-            CHANGED_FILES=$(git show --name-only --pretty=format: $commit | tr '\n' ' ')
-            HAS_TAURI_CHANGES=false
-            
-            # Check each pattern
-            if echo "$CHANGED_FILES" | grep -q "src/" && echo "$CHANGED_FILES" | grep -qvE "src/(dist|build|node_modules|\.next|\.cache)"; then
-              HAS_TAURI_CHANGES=true
-            elif echo "$CHANGED_FILES" | grep -qE "src-tauri/(src|Cargo\.(toml|lock)|tauri\..*\.conf\.json|build\.rs|capabilities)"; then
-              HAS_TAURI_CHANGES=true
-            fi
-            
-            if [ "$HAS_TAURI_CHANGES" = true ]; then
-              LAST_TAURI_COMMIT=$(git rev-parse --short $commit)
-              break
-            fi
-          done
-
-          if [ -z "$LAST_TAURI_COMMIT" ]; then
-            echo "⚠️  No Tauri-related changes found in recent commits, using current commit"
-            LAST_TAURI_COMMIT=$(git rev-parse --short HEAD)
-          fi
-
-          echo "📝 Last Tauri-related commit: $LAST_TAURI_COMMIT"
-          echo "📝 Current commit: $(git rev-parse --short HEAD)"
-
-          # Generate autobuild version for consistency
-          CURRENT_BASE_VERSION=$(echo "$CURRENT_VERSION" | sed -E 's/-(alpha|beta|rc)(\.[0-9]+)?//g' | sed -E 's/\+[a-zA-Z0-9.-]+//g')
-          MONTH=$(TZ=Asia/Shanghai date +%m)
-          DAY=$(TZ=Asia/Shanghai date +%d)
-          AUTOBUILD_VERSION="${CURRENT_BASE_VERSION}+autobuild.${MONTH}${DAY}.${LAST_TAURI_COMMIT}"
-
-          echo "🏷️  Current autobuild version: $AUTOBUILD_VERSION"
-
-          # Set outputs for other jobs to use
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "last_tauri_commit=$LAST_TAURI_COMMIT" >> $GITHUB_OUTPUT
-          echo "autobuild_version=$AUTOBUILD_VERSION" >> $GITHUB_OUTPUT
-
   clean_old_assets:
     name: Clean Old Release Assets
     runs-on: ubuntu-latest
-    needs: check_current_version
     steps:
-      - name: Checkout repository
+      - name: Checkout requested source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref || 'loch/dev' }}
+          fetch-depth: 1
 
-      - name: Clean old assets from release
+      - name: Resolve version to preserve
+        id: version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ env.TAG_NAME }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.tag_name || 'alpha' }}
+          REQUESTED_VERSION: ${{ inputs.current_version }}
+        run: |
+          CURRENT_VERSION="$REQUESTED_VERSION"
+          if [ -z "$CURRENT_VERSION" ]; then
+            LATEST_JSON_EXISTS=$(gh release view "$TAG_NAME" --json assets \
+              -q '.assets[] | select(.name == "latest.json") | .name' 2>/dev/null || true)
+            if [ -n "$LATEST_JSON_EXISTS" ]; then
+              LATEST_JSON_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/latest.json"
+              CURRENT_VERSION=$(curl --fail --silent --show-error --location \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/octet-stream" \
+                "$LATEST_JSON_URL" | jq -r '.version // empty') || CURRENT_VERSION=""
+            fi
+          fi
+          if [ -z "$CURRENT_VERSION" ]; then
+            CURRENT_VERSION=$(jq -r '.version' package.json)
+            echo "⚠️  No explicit version or latest.json version; falling back to package.json"
+          fi
+          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 Preserving assets for version: $CURRENT_VERSION"
+
+      - name: Clean old assets from rolling release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.tag_name || 'alpha' }}
+          CURRENT_VERSION: ${{ steps.version.outputs.current_version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          # Use values from check_current_version job
-          CURRENT_AUTOBUILD_VERSION="${{ needs.check_current_version.outputs.autobuild_version }}"
-          LAST_TAURI_COMMIT="${{ needs.check_current_version.outputs.last_tauri_commit }}"
-          CURRENT_VERSION="${{ needs.check_current_version.outputs.current_version }}"
-
-          echo "📦 Current version: $CURRENT_VERSION"
-          echo "📦 Current autobuild version: $CURRENT_AUTOBUILD_VERSION"
-          echo "📝 Last Tauri commit: $LAST_TAURI_COMMIT"
-          echo "🏷️  Target tag: $TAG_NAME"
-          echo "🔍 Dry run mode: $DRY_RUN"
-
-          # Check if release exists
-          RELEASE_EXISTS=$(gh release view "$TAG_NAME" --json id -q '.id' 2>/dev/null || echo "")
-
-          if [ -z "$RELEASE_EXISTS" ]; then
+          if ! gh release view "$TAG_NAME" --json id --jq '.id' >/dev/null 2>&1; then
             echo "❌ Release '$TAG_NAME' not found"
             exit 1
           fi
 
-          echo "✅ Found release '$TAG_NAME'"
-
-          # Get all assets
-          echo "📋 Getting list of all assets..."
-          assets=$(gh release view "$TAG_NAME" --json assets -q '.assets[].name' || true)
-
-          if [ -z "$assets" ]; then
+          mapfile -t ASSETS < <(gh release view "$TAG_NAME" --json assets --jq '.assets[].name')
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "ℹ️  No assets found in release '$TAG_NAME'"
             exit 0
           fi
 
-          echo "📋 Found assets:"
-          echo "$assets" | sed 's/^/  - /'
-
-          # Count assets to keep and delete
-          ASSETS_TO_KEEP=""
-          ASSETS_TO_DELETE=""
-
-          for asset in $assets; do
-            # Keep assets that match current autobuild version or are non-versioned files (like latest.json)
-            if [[ "$asset" == *"$CURRENT_AUTOBUILD_VERSION"* ]] || [[ "$asset" == "latest.json" ]]; then
-              ASSETS_TO_KEEP="$ASSETS_TO_KEEP$asset\n"
-            else
-              ASSETS_TO_DELETE="$ASSETS_TO_DELETE$asset\n"
+          DELETE_COUNT=0
+          for asset in "${ASSETS[@]}"; do
+            if [[ "$asset" == *"$CURRENT_VERSION"* ]] || [ "$asset" = "latest.json" ]; then
+              echo "Keeping: $asset"
+              continue
             fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "Would delete: $asset"
+            else
+              echo "Deleting: $asset"
+              gh release delete-asset "$TAG_NAME" "$asset" --yes
+            fi
+            DELETE_COUNT=$((DELETE_COUNT + 1))
           done
 
-          echo ""
-          echo "🔒 Assets to keep (current version: $CURRENT_AUTOBUILD_VERSION):"
-          if [ -n "$ASSETS_TO_KEEP" ]; then
-            echo -e "$ASSETS_TO_KEEP" | grep -v '^$' | sed 's/^/  - /'
-          else
-            echo "  - None"
-          fi
-
-          echo ""
-          echo "🗑️  Assets to delete:"
-          if [ -n "$ASSETS_TO_DELETE" ]; then
-            echo -e "$ASSETS_TO_DELETE" | grep -v '^$' | sed 's/^/  - /'
-          else
-            echo "  - None"
-            echo "ℹ️  No old assets to clean"
-            exit 0
-          fi
-
           if [ "$DRY_RUN" = "true" ]; then
-            echo ""
-            echo "🔍 DRY RUN MODE: No assets will actually be deleted"
-            echo "   To actually delete these assets, run this workflow again with dry_run=false"
+            echo "🔍 Dry run complete; $DELETE_COUNT asset(s) would be deleted"
           else
-            echo ""
-            echo "🗑️  Deleting old assets..."
-            
-            DELETED_COUNT=0
-            FAILED_COUNT=0
-            
-            for asset in $assets; do
-              # Skip assets that should be kept
-              if [[ "$asset" == *"$CURRENT_AUTOBUILD_VERSION"* ]] || [[ "$asset" == "latest.json" ]]; then
-                continue
-              fi
-              
-              echo "  Deleting: $asset"
-              if gh release delete-asset "$TAG_NAME" "$asset" -y 2>/dev/null; then
-                DELETED_COUNT=$((DELETED_COUNT + 1))
-              else
-                echo "    ⚠️  Failed to delete $asset"
-                FAILED_COUNT=$((FAILED_COUNT + 1))
-              fi
-            done
-
-            echo ""
-            echo "📊 Cleanup summary:"
-            echo "  - Deleted: $DELETED_COUNT assets"
-            if [ $FAILED_COUNT -gt 0 ]; then
-              echo "  - Failed: $FAILED_COUNT assets"
-            fi
-            echo "  - Kept: $(echo -e "$ASSETS_TO_KEEP" | grep -v '^$' | wc -l) assets"
-            
-            if [ $FAILED_COUNT -gt 0 ]; then
-              echo "⚠️  Some assets failed to delete. Please check the logs above."
-              exit 1
-            else
-              echo "✅ Cleanup completed successfully!"
-            fi
+            echo "✅ Cleanup complete; deleted $DELETE_COUNT old asset(s) from '$TAG_NAME'"
           fi
