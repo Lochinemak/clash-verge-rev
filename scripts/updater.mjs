@@ -5,9 +5,6 @@ import { resolveUpdateLog, resolveUpdateLogDefault } from './updatelog.mjs'
 const UPDATE_TAG_NAME = 'updater'
 const UPDATE_JSON_FILE = 'update.json'
 const UPDATE_JSON_PROXY = 'update-proxy.json'
-const ALPHA_TAG_NAME = 'updater-alpha'
-const ALPHA_UPDATE_JSON_FILE = 'update.json'
-const ALPHA_UPDATE_JSON_PROXY = 'update-proxy.json'
 
 async function resolveUpdater() {
   if (process.env.GITHUB_TOKEN === undefined) {
@@ -41,29 +38,19 @@ async function resolveUpdater() {
   console.log(`Retrieved ${tags.length} tags in total`)
 
   const stableTagRegex = /^v\d+\.\d+\.\d+$/
-  const preReleaseRegex = /^(alpha|beta|rc|pre)$/i
 
   const stableTag = tags.find((t) => stableTagRegex.test(t.name))
-  const preReleaseTag = tags.find((t) => preReleaseRegex.test(t.name))
 
   console.log('All tags:', tags.map((t) => t.name).join(', '))
   console.log('Stable tag:', stableTag ? stableTag.name : 'None found')
-  console.log(
-    'Pre-release tag:',
-    preReleaseTag ? preReleaseTag.name : 'None found',
-  )
   console.log()
 
   if (stableTag) {
-    await processRelease(github, options, stableTag, false)
-  }
-
-  if (preReleaseTag) {
-    await processRelease(github, options, preReleaseTag, true)
+    await processRelease(github, options, stableTag)
   }
 }
 
-async function processRelease(github, options, tag, isAlpha) {
+async function processRelease(github, options, tag) {
   if (!tag) return
 
   try {
@@ -267,11 +254,8 @@ async function processRelease(github, options, tag, isAlpha) {
       }
     })
 
-    const releaseTag = isAlpha ? ALPHA_TAG_NAME : UPDATE_TAG_NAME
-    console.log(
-      `Processing ${isAlpha ? 'alpha' : 'stable'} release:`,
-      releaseTag,
-    )
+    const releaseTag = UPDATE_TAG_NAME
+    console.log('Processing stable release:', releaseTag)
 
     try {
       let updateRelease
@@ -293,11 +277,9 @@ async function processRelease(github, options, tag, isAlpha) {
           const createResponse = await github.rest.repos.createRelease({
             ...options,
             tag_name: releaseTag,
-            name: isAlpha
-              ? 'Auto-update Alpha Channel'
-              : 'Auto-update Stable Channel',
-            body: `This release contains the update information for ${isAlpha ? 'alpha' : 'stable'} channel.`,
-            prerelease: isAlpha,
+            name: 'Auto-update Stable Channel',
+            body: 'This release contains the update information for the stable channel.',
+            prerelease: false,
           })
           updateRelease = createResponse.data
           console.log(
@@ -308,8 +290,8 @@ async function processRelease(github, options, tag, isAlpha) {
         }
       }
 
-      const jsonFile = isAlpha ? ALPHA_UPDATE_JSON_FILE : UPDATE_JSON_FILE
-      const proxyFile = isAlpha ? ALPHA_UPDATE_JSON_PROXY : UPDATE_JSON_PROXY
+      const jsonFile = UPDATE_JSON_FILE
+      const proxyFile = UPDATE_JSON_PROXY
 
       for (const asset of updateRelease.assets) {
         if (asset.name === jsonFile) {
@@ -340,14 +322,9 @@ async function processRelease(github, options, tag, isAlpha) {
         data: JSON.stringify(updateDataNew, null, 2),
       })
 
-      console.log(
-        `Successfully uploaded ${isAlpha ? 'alpha' : 'stable'} update files to ${releaseTag}`,
-      )
+      console.log(`Successfully uploaded stable update files to ${releaseTag}`)
     } catch (error) {
-      console.error(
-        `Failed to process ${isAlpha ? 'alpha' : 'stable'} release:`,
-        error.message,
-      )
+      console.error('Failed to process stable release:', error.message)
     }
   } catch (error) {
     if (error.status === 404) {

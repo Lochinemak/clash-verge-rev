@@ -19,6 +19,7 @@ import { useUpdate } from '@/hooks/use-update'
 import { restartApp } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
 import { useSetUpdateState, useUpdateState } from '@/services/states'
+import { getReleaseTagForVersion } from '@/services/update-channel'
 
 type MarkdownNode = {
   type: string
@@ -273,9 +274,12 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
             size="small"
             sx={{ whiteSpace: 'nowrap' }}
             onClick={() => {
-              openUrl(
-                `https://github.com/Lochinemak/clash-verge-rev/releases/tag/v${updateInfo?.version}`,
-              )
+              const releaseTag = getReleaseTagForVersion(updateInfo?.version)
+              if (releaseTag) {
+                openUrl(
+                  `https://github.com/Lochinemak/clash-verge-rev/releases/tag/${releaseTag}`,
+                )
+              }
             }}
           >
             {t('settings.modals.update.actions.goToRelease')}

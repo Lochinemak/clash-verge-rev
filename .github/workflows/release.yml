@@ -858,3 +858,44 @@ jobs:
           BUILD_TYPE: release
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}
+
+  advance-development-version:
+    if: ${{ github.event_name == 'push' }}
+    name: Advance Development Version
+    runs-on: ubuntu-latest
+    needs: [check_tag_version, release-update-for-fixed-webview2]
+    steps:
+      - name: Checkout loch/dev
+        uses: actions/checkout@v7
+        with:
+          ref: loch/dev
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Advance patch version
+        id: bump
+        run: pnpm advance-development-version "${{ needs.check_tag_version.outputs.release_tag }}"
+
+      - name: Commit and push
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          NEXT_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json Cargo.lock src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          git commit -m "chore(release): start v$NEXT_VERSION development"
+          git push origin HEAD:loch/dev

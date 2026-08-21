@@ -28,7 +28,9 @@
  *   - Validate and normalize the version argument
  *   - Update the version field in package.json
  *   - Update the version field in src-tauri/Cargo.toml
+ *   - Update the root package version in Cargo.lock
  *   - Update the version field in src-tauri/tauri.conf.json
+ *   - Pin the Tauri updater endpoints to the matching release channel
  *
  * Errors are logged and the process exits with code 1 on failure.
  */
@@ -160,6 +162,59 @@ function getBaseVersion(version) {
   return match ? match[1] : version
 }
 
+const UPDATE_CHANNELS = {
+  stable: {
+    tag: 'updater',
+    manifest: 'update.json',
+    proxyManifest: 'update-proxy.json',
+  },
+  alpha: {
+    tag: 'alpha',
+    manifest: 'latest.json',
+    proxyManifest: 'latest.json',
+  },
+  nightly: {
+    tag: 'nightly',
+    manifest: 'latest.json',
+    proxyManifest: 'latest.json',
+  },
+}
+
+function getUpdateChannel(version) {
+  const versionWithoutV = version.replace(/^v/, '')
+  const prerelease = versionWithoutV.split('+')[0].split('-')[1]
+  if (!prerelease) return 'stable'
+
+  const channel = prerelease.split('.')[0].toLowerCase()
+  if (channel === 'alpha' || channel === 'nightly') return channel
+
+  console.warn(
+    `[WARN]: Version ${version} is outside the rolling prerelease channels; using stable updater endpoints.`,
+  )
+  return 'stable'
+}
+
+function getUpdaterEndpoints(version, { fixedWebview2 = false } = {}) {
+  const channel = getUpdateChannel(version)
+  if (channel === 'stable' && fixedWebview2) {
+    const releasePath =
+      'https://github.com/Lochinemak/clash-verge-rev/releases/download/updater'
+    return [
+      `https://ghfast.top/${releasePath}/update-fixed-webview2-proxy.json`,
+      `${releasePath}/update-fixed-webview2.json`,
+    ]
+  }
+
+  const { tag, manifest, proxyManifest } = UPDATE_CHANNELS[channel]
+  const releasePath = `https://github.com/Lochinemak/clash-verge-rev/releases/download/${tag}`
+
+  return [
+    `https://ghfast.top/${releasePath}/${proxyManifest}`,
+    `https://gh-proxy.org/${releasePath}/${proxyManifest}`,
+    `${releasePath}/${manifest}`,
+  ]
+}
+
 /**
  * 更新 package.json 版本号
  * @param {string} newVersion
@@ -224,6 +279,25 @@ async function updateCargoVersion(newVersion) {
   }
 }
 
+async function updateCargoLockVersion(newVersion) {
+  const cargoLockPath = path.join(process.cwd(), 'Cargo.lock')
+  const versionWithoutV = newVersion.replace(/^v/, '')
+  const data = await fs.readFile(cargoLockPath, 'utf8')
+  const packagePattern =
+    /(\[\[package\]\]\nname = "clash-verge"\nversion = ")[^"]+("\n)/
+
+  if (!packagePattern.test(data)) {
+    throw new Error('Unable to find the clash-verge package in Cargo.lock')
+  }
+
+  await fs.writeFile(
+    cargoLockPath,
+    data.replace(packagePattern, `$1${versionWithoutV}$2`),
+    'utf8',
+  )
+  console.log(`[INFO]: Cargo.lock version updated to: ${versionWithoutV}`)
+}
+
 /**
  * 更新 tauri.conf.json 版本号
  * @param {string} newVersion
@@ -245,14 +319,38 @@ async function updateTauriConfigVersion(newVersion) {
 
     // 使用完整版本信息，包含build metadata
     tauriConfig.version = versionWithoutV
+    tauriConfig.plugins.updater.endpoints = getUpdaterEndpoints(newVersion)
 
     await fs.writeFile(
       tauriConfigPath,
       JSON.stringify(tauriConfig, null, 2),
       'utf8',
     )
+
+    const fixedWebview2Endpoints = getUpdaterEndpoints(newVersion, {
+      fixedWebview2: true,
+    })
+    for (const arch of ['x86', 'x64', 'arm64']) {
+      const configPath = path.join(
+        _dirname,
+        'src-tauri',
+        `webview2.${arch}.json`,
+      )
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'))
+      if (
+        JSON.stringify(config.plugins.updater.endpoints) ===
+        JSON.stringify(fixedWebview2Endpoints)
+      ) {
+        continue
+      }
+      config.plugins.updater.endpoints = fixedWebview2Endpoints
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8')
+    }
     console.log(
       `[INFO]: tauri.conf.json version updated to: ${versionWithoutV}`,
+    )
+    console.log(
+      `[INFO]: updater channel pinned to: ${getUpdateChannel(newVersion)}`,
     )
   } catch (error) {
     console.error('Error updating tauri.conf.json version:', error)
@@ -335,6 +433,7 @@ async function main(versionArg) {
     console.log(`[INFO]: Updating versions to: ${newVersion}`)
     await updatePackageVersion(newVersion)
     await updateCargoVersion(newVersion)
+    await updateCargoLockVersion(newVersion)
     await updateTauriConfigVersion(newVersion)
     console.log('[SUCCESS]: All version updates completed successfully!')
   } catch (error) {

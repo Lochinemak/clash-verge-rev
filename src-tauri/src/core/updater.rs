@@ -3,6 +3,7 @@ use anyhow::Result;
 use chrono::Utc;
 use clash_verge_logging::{Type, logging};
 use parking_lot::RwLock;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
@@ -34,9 +35,18 @@ impl SilentUpdater {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum UpdateChannel {
+    Stable,
+    Alpha,
+    Nightly,
+}
+
 #[derive(Serialize, Deserialize)]
 struct UpdateCacheMeta {
     version: String,
+    channel: UpdateChannel,
     downloaded_at: String,
 }
 
@@ -45,7 +55,7 @@ impl SilentUpdater {
         Ok(dirs::app_home_dir()?.join("update_cache"))
     }
 
-    fn write_cache(bytes: &[u8], version: &str) -> Result<()> {
+    fn write_cache(bytes: &[u8], version: &str, channel: UpdateChannel) -> Result<()> {
         let cache_dir = Self::cache_dir()?;
         std::fs::create_dir_all(&cache_dir)?;
 
@@ -54,6 +64,7 @@ impl SilentUpdater {
 
         let meta = UpdateCacheMeta {
             version: version.to_string(),
+            channel,
             downloaded_at: Utc::now().to_rfc3339(),
         };
         let meta_path = cache_dir.join("pending_update.json");
@@ -93,33 +104,33 @@ impl SilentUpdater {
     }
 }
 
-/// Compares numeric version components after stripping `v` and prerelease suffixes.
-fn version_lte(a: &str, b: &str) -> bool {
-    let parse = |v: &str| -> Vec<u64> {
-        v.trim_start_matches('v')
-            .split('.')
-            .filter_map(|part| {
-                let numeric = part.split('-').next().unwrap_or("0");
-                numeric.parse::<u64>().ok()
-            })
-            .collect()
-    };
+fn parse_version(version: &str) -> Option<Version> {
+    Version::parse(version.trim_start_matches('v')).ok()
+}
 
-    let a_parts = parse(a);
-    let b_parts = parse(b);
-    let len = a_parts.len().max(b_parts.len());
-
-    for i in 0..len {
-        let av = a_parts.get(i).copied().unwrap_or(0);
-        let bv = b_parts.get(i).copied().unwrap_or(0);
-        if av < bv {
-            return true;
-        }
-        if av > bv {
-            return false;
-        }
+fn update_channel(version: &Version) -> Option<UpdateChannel> {
+    if version.pre.is_empty() {
+        return Some(UpdateChannel::Stable);
     }
-    true // equal
+
+    match version.pre.as_str().split('.').next() {
+        Some("alpha") => Some(UpdateChannel::Alpha),
+        Some("nightly") => Some(UpdateChannel::Nightly),
+        _ => None,
+    }
+}
+
+fn is_allowed_update(current: &str, remote: &str) -> Option<UpdateChannel> {
+    let current_version = parse_version(current)?;
+    let remote_version = parse_version(remote)?;
+    let current_channel = update_channel(&current_version)?;
+    let same_channel = update_channel(&remote_version) == Some(current_channel);
+
+    if same_channel && remote_version > current_version {
+        Some(current_channel)
+    } else {
+        None
+    }
 }
 
 /// Maps UI language to one of the three NSIS translations, defaulting to English.
@@ -139,17 +150,28 @@ impl SilentUpdater {
 
         let meta = match Self::read_cache_meta() {
             Ok(meta) => meta,
-            Err(_) => return false, // No cache, nothing to do
+            Err(e) => {
+                if Self::cache_dir().is_ok_and(|cache_dir| cache_dir.exists()) {
+                    logging!(
+                        warn,
+                        Type::System,
+                        "Invalid or legacy update cache metadata: {e}, cleaning up"
+                    );
+                    Self::delete_cache();
+                }
+                return false;
+            }
         };
 
         let cached_version = &meta.version;
 
-        if version_lte(cached_version, current_version) {
+        if is_allowed_update(current_version, cached_version) != Some(meta.channel) {
             logging!(
                 info,
                 Type::System,
-                "Update cache version ({}) <= current ({}), cleaning up",
+                "Update cache version/channel ({}, {:?}) is not valid for current ({}), cleaning up",
                 cached_version,
+                meta.channel,
                 current_version
             );
             Self::delete_cache();
@@ -224,13 +246,16 @@ impl SilentUpdater {
         };
 
         // A changed server version invalidates the cached bytes.
-        if update.version != *cached_version {
+        if update.version != *cached_version
+            || is_allowed_update(current_version, &update.version) != Some(meta.channel)
+        {
             logging!(
                 info,
                 Type::System,
-                "Server version ({}) != cached version ({}), cache is stale, cleaning up",
+                "Server version/channel ({}) does not match cached update ({}, {:?}), cleaning up",
                 update.version,
-                cached_version
+                cached_version,
+                meta.channel
             );
             Self::delete_cache();
             return false;
@@ -428,6 +453,15 @@ impl SilentUpdater {
         };
 
         let version = update.version.clone();
+        let Some(channel) = is_allowed_update(env!("CARGO_PKG_VERSION"), &version) else {
+            logging!(
+                warn,
+                Type::System,
+                "Silent updater: rejected cross-channel or invalid update: current={}, remote={version}",
+                env!("CARGO_PKG_VERSION")
+            );
+            return Ok(());
+        };
         logging!(info, Type::System, "Silent updater: update available: v{version}");
 
         if let Some(body) = &update.body
@@ -461,7 +495,7 @@ impl SilentUpdater {
             )
             .await?;
 
-        if let Err(e) = Self::write_cache(&bytes, &version) {
+        if let Err(e) = Self::write_cache(&bytes, &version, channel) {
             logging!(warn, Type::System, "Silent updater: failed to write cache: {e}");
         }
 
