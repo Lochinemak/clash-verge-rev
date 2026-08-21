@@ -10,6 +10,12 @@ notifications:
     title: Proksi Sistem
     'on': System proxy has been enabled.
     'off': System proxy has been disabled.
+  systemProxyFailed:
+    title: Proxy Sistem
+    body: Proxy sistem tidak dapat diatur. Buka Clash Verge untuk melihat alasannya.
+  systemProxyGuardStopped:
+    title: Penjaga Proxy Sistem
+    body: Berhenti setelah gagal beberapa kali berturut-turut. Buka Clash Verge untuk melihat alasannya.
   tunModeToggled:
     title: Mode TUN
     'on': TUN mode has been enabled.
@@ -44,7 +50,6 @@ launchGuard:
     {reason}
   notInBundle: Berkas yang dapat dijalankan tidak berada di dalam bundel aplikasi.
   canonicalizeBundleError: 'Jalur bundel aplikasi tidak dapat diuraikan: {error}'
-  bundleNameError: Nama bundel aplikasi tidak dapat ditentukan. Aplikasi akan ditutup.
   replacePrompt: Sudah ada aplikasi di {destination}. Ganti dan jalankan ulang dari Applications?
   movePrompt: Agar layanan latar belakang dapat dimulai dengan aman, aplikasi harus dipindahkan ke {destination}. Pindahkan dan jalankan ulang sekarang?
   createApplicationsDirError: 'Direktori Applications tidak dapat dibuat: {error}'

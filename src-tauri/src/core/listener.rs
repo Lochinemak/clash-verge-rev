@@ -1,5 +1,4 @@
 use anyhow::{Context as _, Result, anyhow, bail};
-#[cfg(target_os = "macos")]
 use clash_verge_logging::{Type as LogType, logging};
 #[cfg(target_os = "macos")]
 use network_interface::{NetworkInterface, NetworkInterfaceConfig as _};
@@ -97,7 +96,7 @@ impl ListenerBindScope {
         })
     }
 
-    pub(crate) fn mixed_port_is_available(&self, port: u16) -> bool {
+    pub(crate) fn probe_mixed_port(&self, port: u16) -> ListenerProbeOutcome {
         let claims = self
             .addresses
             .iter()
@@ -108,7 +107,13 @@ impl ListenerBindScope {
                     .map(move |transport| BindClaim::new("mixed", address, port, transport))
             })
             .collect::<Vec<_>>();
-        matches!(probe_claims(&claims), ListenerProbeOutcome::Available)
+        probe_claims(&claims)
+    }
+
+    /// Whether `port` is provably free — for picking a replacement, where anything short of
+    /// proof should skip the candidate.
+    pub(crate) fn mixed_port_is_available(&self, port: u16) -> bool {
+        matches!(self.probe_mixed_port(port), ListenerProbeOutcome::Available)
     }
 }
 
@@ -225,6 +230,10 @@ fn proxy_claims(config: &Mapping) -> Result<Vec<BindClaim>> {
     let addresses = proxy_bind_addresses(config)?;
     let mut claims = Vec::new();
     for (key, name, transports) in PROXY_LISTENERS {
+        #[cfg(target_os = "windows")]
+        if matches!(key, "redir-port" | "tproxy-port") {
+            continue;
+        }
         let Some(port) = mapping_port(config, key)? else {
             continue;
         };
@@ -335,12 +344,58 @@ fn claims_overlap(left: &BindClaim, right: &BindClaim) -> bool {
         && (left.address == right.address || left.address.is_unspecified() || right.address.is_unspecified())
 }
 
+/// Whether a refused bind can be dismissed because nothing is actually serving the claim.
+///
+/// A refused bind is not proof a port is in use: `SO_REUSEADDR` cannot reuse a `TIME_WAIT` socket
+/// owned by a *different* user, and a service-managed Core runs as root while this process does
+/// not. So every port the Core used is briefly unbindable here even though the Core itself could
+/// rebind it at once (measured on macOS 26). "Is anything answering?" survives that asymmetry;
+/// "can I bind?" does not.
+///
+/// Restrictions, both deliberate: a wildcard claim can be blocked by a listener on any address, so
+/// one refused connection cannot clear it — leaving `allow-lan` setups exposed to the same false
+/// positive. UDP has no lingering state, so a refused UDP bind is always a live socket.
+fn nothing_is_serving(claim: &BindClaim) -> bool {
+    const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
+
+    if claim.transport != ListenerTransport::Tcp || claim.address.is_unspecified() {
+        return false;
+    }
+    // Only an explicit refusal proves absence; a timeout leaves the question open.
+    matches!(
+        std::net::TcpStream::connect_timeout(&claim.socket_addr(), ANSWER_TIMEOUT),
+        Err(error) if error.kind() == io::ErrorKind::ConnectionRefused
+    )
+}
+
 fn probe_claims(claims: &[BindClaim]) -> ListenerProbeOutcome {
     let mut sockets = Vec::with_capacity(claims.len());
     for claim in claims {
         match bind_claim(claim) {
             Ok(mut bound) => sockets.append(&mut bound),
-            Err(error) if is_bind_conflict(&error) => return conflict_outcome(claim),
+            Err(error) if is_bind_conflict(&error) => {
+                if nothing_is_serving(claim) {
+                    logging!(
+                        info,
+                        LogType::Network,
+                        "{} could not bind {} ({}), but nothing answers there; treating it as free",
+                        claim.name,
+                        claim.socket_addr(),
+                        error
+                    );
+                    continue;
+                }
+                logging!(
+                    warn,
+                    LogType::Network,
+                    "{} cannot claim {} over {}: {}",
+                    claim.name,
+                    claim.socket_addr(),
+                    transport_name(claim.transport),
+                    error
+                );
+                return conflict_outcome(claim);
+            }
             Err(error)
                 if matches!(
                     error.kind(),
@@ -370,7 +425,8 @@ fn probe_claims(claims: &[BindClaim]) -> ListenerProbeOutcome {
             }
         }
     }
-    debug_assert!(sockets.len() >= claims.len());
+    // No one-socket-per-claim assertion: a dismissed claim is one this process never bound.
+    drop(sockets);
     ListenerProbeOutcome::Available
 }
 
@@ -425,7 +481,19 @@ fn bind_claim(claim: &BindClaim) -> io::Result<Vec<Socket>> {
             match bind_socket(&BindClaim::new(claim.name, address, claim.port, claim.transport)) {
                 Ok(socket) => sockets.push(socket),
                 // Only a conflict proves the port is taken; a vanished guard address proves nothing.
-                Err(error) if is_bind_conflict(&error) => return Err(error),
+                Err(error) if is_bind_conflict(&error) => {
+                    // The caller only sees the claim, so name the address that actually lost.
+                    logging!(
+                        warn,
+                        LogType::Network,
+                        "{} claiming {} could not hold the overlapping address {}: {}",
+                        claim.name,
+                        claim.socket_addr(),
+                        SocketAddr::new(address, claim.port),
+                        error
+                    );
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -434,6 +502,13 @@ fn bind_claim(claim: &BindClaim) -> io::Result<Vec<Socket>> {
     let socket = bind_socket(claim)?;
     if claim.transport == ListenerTransport::Tcp {
         socket.listen(1)?;
+    }
+    #[cfg(windows)]
+    if claim.transport == ListenerTransport::Tcp
+        && !claim.address.is_unspecified()
+        && windows_wildcard_tcp_listener_exists(claim.address, claim.port)?
+    {
+        return Err(io::ErrorKind::AddrInUse.into());
     }
     sockets.push(socket);
     Ok(sockets)
@@ -504,6 +579,107 @@ fn set_exclusive_address_use(socket: &Socket) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
+fn windows_wildcard_tcp_listener_exists(address: IpAddr, port: u16) -> io::Result<bool> {
+    use windows_sys::Win32::{
+        NetworkManagement::IpHelper::{MIB_TCP6ROW_OWNER_PID, MIB_TCPROW_OWNER_PID},
+        Networking::WinSock::{AF_INET, AF_INET6},
+    };
+
+    let family = match address {
+        IpAddr::V4(_) => u32::from(AF_INET),
+        IpAddr::V6(_) => u32::from(AF_INET6),
+    };
+    let table = windows_tcp_listener_table(family)?;
+    match address {
+        IpAddr::V4(_) => Ok(windows_tcp_listener_rows::<MIB_TCPROW_OWNER_PID>(&table)?
+            .iter()
+            .any(|row| row.dwLocalAddr == 0 && windows_tcp_port(row.dwLocalPort) == port)),
+        IpAddr::V6(_) => Ok(windows_tcp_listener_rows::<MIB_TCP6ROW_OWNER_PID>(&table)?
+            .iter()
+            .any(|row| row.ucLocalAddr == [0; 16] && windows_tcp_port(row.dwLocalPort) == port)),
+    }
+}
+
+#[cfg(windows)]
+fn windows_tcp_listener_table(family: u32) -> io::Result<Vec<u32>> {
+    use std::{mem::size_of, ptr::null_mut};
+    use windows_sys::Win32::{
+        Foundation::ERROR_INSUFFICIENT_BUFFER,
+        NetworkManagement::IpHelper::{GetExtendedTcpTable, TCP_TABLE_OWNER_PID_LISTENER},
+    };
+
+    let mut byte_count = 0;
+    // SAFETY: a null table is the documented size-query form; `byte_count` is writable.
+    let status = unsafe {
+        GetExtendedTcpTable(
+            null_mut(),
+            &raw mut byte_count,
+            0,
+            family,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        )
+    };
+    if status != ERROR_INSUFFICIENT_BUFFER {
+        return Err(io::Error::from_raw_os_error(status.cast_signed()));
+    }
+
+    loop {
+        let word_count = (byte_count as usize).div_ceil(size_of::<u32>());
+        let mut table = vec![0u32; word_count];
+        // SAFETY: `table` has at least `byte_count` writable bytes and the API updates
+        // `byte_count` when the listener table grows between calls.
+        let status = unsafe {
+            GetExtendedTcpTable(
+                table.as_mut_ptr().cast(),
+                &raw mut byte_count,
+                0,
+                family,
+                TCP_TABLE_OWNER_PID_LISTENER,
+                0,
+            )
+        };
+        match status {
+            0 => return Ok(table),
+            ERROR_INSUFFICIENT_BUFFER => {}
+            error => return Err(io::Error::from_raw_os_error(error.cast_signed())),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn windows_tcp_listener_rows<Row>(table: &[u32]) -> io::Result<&[Row]> {
+    use std::mem::{align_of, size_of, size_of_val};
+
+    let Some((&row_count, _)) = table.split_first() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Windows returned an empty TCP listener table",
+        ));
+    };
+    let row_count = row_count as usize;
+    let required_bytes = row_count
+        .checked_mul(size_of::<Row>())
+        .and_then(|rows| size_of::<u32>().checked_add(rows))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Windows TCP listener table is too large"))?;
+    if required_bytes > size_of_val(table) || align_of::<Row>() > align_of::<u32>() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Windows returned a malformed TCP listener table",
+        ));
+    }
+
+    // SAFETY: the size and alignment checks above cover `row_count` complete rows;
+    // the API places them immediately after its u32 entry count.
+    Ok(unsafe { std::slice::from_raw_parts(table.as_ptr().add(1).cast(), row_count) })
+}
+
+#[cfg(windows)]
+const fn windows_tcp_port(raw_port: u32) -> u16 {
+    u16::from_be(raw_port as u16)
+}
+
 const fn conflict_outcome(claim: &BindClaim) -> ListenerProbeOutcome {
     ListenerProbeOutcome::Conflict {
         port: claim.port,
@@ -521,14 +697,14 @@ const fn transport_name(transport: ListenerTransport) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ListenerBindScope, ListenerProbe, ListenerProbeOutcome, ListenerTransport, probe_listener,
-        probe_proxy_port_change,
+        BindClaim, ListenerBindScope, ListenerProbe, ListenerProbeOutcome, ListenerTransport, nothing_is_serving,
+        probe_listener, probe_proxy_port_change,
     };
     use serde_json::json;
     use serde_yaml_ng::Mapping;
     #[cfg(unix)]
     use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-    use std::net::{Ipv4Addr, TcpListener, UdpSocket};
+    use std::net::{IpAddr, Ipv4Addr, TcpListener, UdpSocket};
     #[cfg(unix)]
     use std::{
         io::Read as _,
@@ -607,6 +783,53 @@ mod tests {
                 transport: ListenerTransport::Tcp
             }
         );
+        Ok(())
+    }
+
+    /// Guards the startup false positive: another user's `TIME_WAIT` makes the kernel refuse the
+    /// bind while nothing is serving. That refusal needs a second uid to stage, so this asserts
+    /// on the classifier directly.
+    #[test]
+    fn a_refused_bind_with_nothing_answering_is_not_a_conflict() -> anyhow::Result<()> {
+        let vacant = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let port = vacant.local_addr()?.port();
+        drop(vacant);
+
+        assert!(
+            nothing_is_serving(&BindClaim::new(
+                "mixed",
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                port,
+                ListenerTransport::Tcp
+            )),
+            "a port nobody listens on must be dismissable"
+        );
+
+        let serving = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
+        assert!(
+            !nothing_is_serving(&BindClaim::new(
+                "mixed",
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                port,
+                ListenerTransport::Tcp
+            )),
+            "a live listener must never be dismissed"
+        );
+        drop(serving);
+        Ok(())
+    }
+
+    /// UDP has no lingering state, so a refused UDP bind is always a live socket.
+    #[test]
+    fn a_refused_udp_bind_is_never_dismissed() -> anyhow::Result<()> {
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let port = socket.local_addr()?.port();
+        assert!(!nothing_is_serving(&BindClaim::new(
+            "mixed",
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port,
+            ListenerTransport::Udp
+        )));
         Ok(())
     }
 
@@ -737,6 +960,19 @@ mod tests {
         let scope =
             ListenerBindScope::from_mapping(&mapping("allow-lan: true\nbind-address: 0.0.0.0\nipv6: false\n")?)?;
         assert!(!scope.mixed_port_is_available(port));
+        Ok(())
+    }
+
+    /// The startup fallback only moves on a proven `Conflict`, so a taken port must report one.
+    #[test]
+    fn startup_scope_reports_a_conflict_rather_than_an_unreachable_answer() -> anyhow::Result<()> {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let port = listener.local_addr()?.port();
+        let scope = ListenerBindScope::from_mapping(&mapping("ipv6: false\n")?)?;
+        assert!(matches!(
+            scope.probe_mixed_port(port),
+            ListenerProbeOutcome::Conflict { .. }
+        ));
         Ok(())
     }
 

@@ -40,12 +40,8 @@ use std::{
 static OWNER_MONITOR_GENERATION: AtomicU64 = AtomicU64::new(0);
 static ACTIVE_SERVICE_SESSION: Lazy<Mutex<Option<ActiveServiceSession>>> = Lazy::new(|| Mutex::new(None));
 
-/// The Service session that owns the running Core, and what that Service can do.
-///
-/// The capability is learned once, when the Core is started, and discarded with the session
-/// rather than cached globally — it describes *the Service instance that owns this Core*, which
-/// is the only scope where it is safe to act on. A Service upgraded underneath a running Core
-/// does not silently gain abilities the Core it owns was not started under.
+/// Capabilities of the service session that owns the running Core.
+/// They are discarded with that session rather than cached across service upgrades.
 #[derive(Clone)]
 struct ActiveServiceSession {
     proof: OwnerSessionProof,
@@ -66,10 +62,7 @@ pub(crate) fn active_service_session() -> Result<OwnerSessionProof> {
         .context("service owner session is not active")
 }
 
-/// Whether the Service that started the running Core can stage a runtime in place.
-///
-/// False for every reason that is not "yes": no session, an older Service, or a protocol query
-/// that did not come back. All of them mean the same thing to the caller — take the slow path.
+/// Returns false unless the active service session explicitly supports in-place staging.
 pub(crate) fn active_service_supports_runtime_staging() -> bool {
     ACTIVE_SERVICE_SESSION
         .lock()
@@ -81,10 +74,7 @@ pub(crate) fn clear_active_service_session() {
     ACTIVE_SERVICE_SESSION.lock().take();
 }
 
-/// Ask the Service whether it speaks the staging half of the protocol.
-///
-/// A failure here is not a failure to start: it only costs the fast path, so it is reported as
-/// "no" and logged rather than propagated.
+/// Probes staging support without failing startup when the fast path is unavailable.
 async fn probe_runtime_staging_support() -> bool {
     match clash_verge_service_ipc::get_version().await {
         Ok(response) if response.code == 0 => response
@@ -131,11 +121,7 @@ pub enum ServiceStatus {
 }
 
 impl ServiceStatus {
-    /// Flatten a Run State snapshot into the legacy single-slot status.
-    ///
-    /// Precedence mirrors what the single slot used to hold: a requested action shadows an
-    /// accepted Sidecar, which shadows the last observation. Kept until the frontend seam
-    /// moves to `RunState` wholesale.
+    /// Flattens Run State using legacy precedence: action, Sidecar allowance, then health.
     fn from_run_state(state: &RunState) -> Self {
         if let Some(action) = state.pending {
             return match action {
@@ -237,11 +223,7 @@ pub(crate) fn trusted_service_evidence() -> Result<bool> {
     macos_service_install_marker_exists().context("failed to inspect launchd service registration")
 }
 
-/// Legacy façade over [`RUN_STATE`].
-///
-/// Holds no state of its own: Service Health, the requested action and the privileged-operation
-/// lock all live in `core::runstate`. This type survives only so that existing call sites keep
-/// compiling while the seam moves; it is retired once they read `RunState` directly.
+/// Stateless legacy façade over [`RUN_STATE`] retained for existing call sites.
 pub struct ServiceManager;
 
 #[cfg(any(all(target_os = "macos", feature = "verge-dev"), test))]
@@ -588,7 +570,10 @@ fn uninstall_service() -> Result<()> {
     let status = if linux_running_as_root() {
         StdCommand::new(&uninstall_path).status()?
     } else {
-        let result = StdCommand::new(&elevator).arg(&uninstall_path).status()?;
+        let result = StdCommand::new(&elevator)
+            .arg("--disable-internal-agent")
+            .arg(&uninstall_path)
+            .status()?;
 
         // 如果 pkexec 执行失败，回退到 sudo
         if !result.success() && elevator.contains("pkexec") {
@@ -636,7 +621,10 @@ fn install_service() -> Result<()> {
     let output = if linux_running_as_root() {
         StdCommand::new(&install_path).output()?
     } else {
-        let result = StdCommand::new(&elevator).arg(&install_path).output()?;
+        let result = StdCommand::new(&elevator)
+            .arg("--disable-internal-agent")
+            .arg(&install_path)
+            .output()?;
 
         // 如果 pkexec 执行失败，回退到 sudo
         if !result.status.success() && elevator.contains("pkexec") {
@@ -782,9 +770,7 @@ fn force_reinstall_service() -> Result<()> {
     })
 }
 
-/// Dispatch a privileged operation to the platform implementation.
-///
-/// Blocking work, so it is handed to a blocking thread: the caller is async.
+/// Dispatches a privileged platform operation on a blocking thread.
 pub(crate) fn run_privileged_service_action(action: PendingAction) -> Result<()> {
     let (operation, label): (fn() -> Result<()>, &'static str) = match action {
         PendingAction::Install => (install_service, "install service"),
@@ -795,11 +781,7 @@ pub(crate) fn run_privileged_service_action(action: PendingAction) -> Result<()>
     tokio::task::block_in_place(operation).with_context(|| format!("{label} failed"))
 }
 
-/// Describe what the Service should hold, for the Core binary this app would start.
-///
-/// Shared by starting and staging so the two cannot disagree about the binary or about how the
-/// configuration's provider paths are rewritten — a staged bundle naming a different core is
-/// exactly what makes the Service refuse to stage.
+/// Builds the same runtime bundle description for both service start and staging.
 async fn collect_service_runtime_bundle(config_file: &Path) -> Result<RuntimeBundle> {
     let verge_config = Config::verge().await;
     let clash_core = verge_config.latest_arc().get_valid_clash_core();
@@ -810,13 +792,7 @@ async fn collect_service_runtime_bundle(config_file: &Path) -> Result<RuntimeBun
     collect_runtime_bundle(config_file, &bin_path).await
 }
 
-/// What asking the Service to stage a runtime produced.
-///
-/// A refusal carries its code because only some refusals say anything about starting. "This bundle
-/// names an asset I will not accept" does: a fresh start materialises the same bundle and is
-/// refused the same way, so stopping a working Core would add an outage to a failure that already
-/// happened. "You do not own this Core" does not — `start_clash` proposes a new session rather than
-/// presenting the old one, so starting is exactly how that gets resolved.
+/// A staging response whose refusal code tells callers whether a fresh start can help.
 pub(super) enum StageRequest {
     Refused { code: u16, message: CompactString },
     Answered(StageRuntimeOutcome),
@@ -829,11 +805,7 @@ impl StageRequest {
     }
 }
 
-/// Have the Service make the running Core's runtime match `config_file`, without restarting it.
-///
-/// `Err` means the request did not get an answer. A refusal, and `RestartRequired`, both come back
-/// as `Ok`: neither is a failure of this function, and only the caller can decide what to do about
-/// them.
+/// Requests in-place staging. `Err` means no answer; refusals are returned for caller policy.
 pub(super) async fn stage_runtime_by_service(config_file: &Path) -> Result<StageRequest> {
     let session = active_service_session()?;
     let credentials = current_owner_credentials()?;
@@ -1111,10 +1083,7 @@ fn start_owner_monitor() {
     });
 }
 
-/// Ask the Service who owns it, flattening every unusable answer into one sample.
-///
-/// A transport error, an error code and an empty payload are the same thing to the watch:
-/// we did not learn anything. Only the log line distinguishes them.
+/// Samples ownership, treating every unusable reply as unreadable.
 async fn read_owner_sample() -> OwnerSample {
     let response = match current_owner_credentials() {
         Ok(credentials) => clash_verge_service_ipc::get_status(&credentials).await,
@@ -1240,11 +1209,8 @@ async fn recover_after_owner_loss_while_locked(reason: OwnerRecoveryReason) {
     }
 }
 
-/// Wait for a freshly installed or repaired Service to answer.
-///
-/// Silence for the whole budget *is* an observation here — the Service had its window and
-/// never spoke — unlike a single failed probe. A readable but rejected reply already recorded
-/// its own verdict, which must not be flattened into "unavailable".
+/// Waits for a repaired service, preserving readable rejection details but classifying sustained
+/// silence as unavailable.
 async fn wait_for_service_ipc() -> Result<()> {
     const CONTEXT: &str = "service IPC did not become available";
     let config = ServiceManager::config();
@@ -1262,8 +1228,8 @@ async fn wait_for_service_ipc() -> Result<()> {
 impl ServiceManager {
     pub const fn config() -> clash_verge_service_ipc::IpcConfig {
         clash_verge_service_ipc::IpcConfig {
-            default_timeout: Duration::from_millis(150),
-            retry_delay: Duration::from_millis(250),
+            default_timeout: Duration::from_millis(1000),
+            retry_delay: Duration::from_millis(500),
             max_retries: 20,
         }
     }
@@ -1324,9 +1290,7 @@ impl ServiceManager {
     }
 
     async fn apply_service_status(&self, status: ServiceStatus) -> Result<()> {
-        // Derived from the caller's own argument, not read back out of the store: an
-        // observation racing in between would clear the pending action and silently turn a
-        // user-authorised install into a no-op.
+        // Use the caller's action; a racing observation may clear the stored pending action.
         let Some(action) = requested_action(&status) else {
             self.set_status(status.clone());
             return report_non_actionable_status(status);
@@ -1347,9 +1311,7 @@ impl ServiceManager {
     }
 }
 
-/// Run the full action workflow and restore the session's previous Sidecar allowance on failure.
-///
-/// This includes the readiness wait: an action has not landed until the Service responds.
+/// Runs through readiness and restores a displaced Sidecar allowance on failure.
 async fn run_action_restoring_sidecar<E: RunStateEnv>(
     store: &RunStateStore<E>,
     was_allowed: bool,
@@ -1398,11 +1360,7 @@ fn report_non_actionable_status(status: ServiceStatus) -> Result<()> {
     Ok(())
 }
 
-/// Run a privileged operation while holding the Run State operation slot.
-///
-/// The slot is released — and `settled` waiters woken — before `post_operation` runs, so a
-/// post-operation refresh such as the tray menu observes the final state rather than a
-/// state still flagged as in-flight.
+/// Releases the Run State operation slot before post-operation observers refresh.
 async fn run_operation_and_then<E, Post, PostFuture>(
     store: &RunStateStore<E>,
     operation: impl Future<Output = Result<()>>,
@@ -1421,12 +1379,7 @@ where
     post_operation().await
 }
 
-/// Apply a legacy single-slot status to a Run State, splitting it back into observation and
-/// request. The inverse of [`ServiceStatus::from_run_state`].
-/// The privileged operation a status is asking for, if any.
-///
-/// A pure function of the status so that a caller can decide what to run without reading the
-/// store back and racing an observation.
+/// Maps a legacy status to its requested action without racing a store reread.
 const fn requested_action(status: &ServiceStatus) -> Option<PendingAction> {
     match status {
         ServiceStatus::InstallRequired => Some(PendingAction::Install),

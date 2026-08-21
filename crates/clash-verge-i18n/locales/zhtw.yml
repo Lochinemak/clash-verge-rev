@@ -10,6 +10,12 @@ notifications:
     title: 系統代理
     'on': 系統代理已啟用。
     'off': 系統代理已關閉。
+  systemProxyFailed:
+    title: 系統代理
+    body: 系統代理設定失敗。開啟 Clash Verge 查看原因。
+  systemProxyGuardStopped:
+    title: 系統代理守衛
+    body: 連續多次失敗後已停止守衛。開啟 Clash Verge 查看原因。
   tunModeToggled:
     title: 虛擬網路介面卡模式
     'on': 虛擬網路介面卡模式已啟用。
@@ -44,7 +50,6 @@ launchGuard:
     {reason}
   notInBundle: 可執行檔不在應用程式套件內。
   canonicalizeBundleError: 無法解析應用程式套件路徑：{error}
-  bundleNameError: 無法判斷應用程式套件名稱，應用程式將結束。
   replacePrompt: 目標位置已有應用程式：{destination}。是否取代並從 Applications 重新啟動？
   movePrompt: 為了安全啟動背景服務，需要將應用程式移至 {destination}。是否立即移動並重新啟動？
   createApplicationsDirError: 無法建立 Applications 目錄：{error}

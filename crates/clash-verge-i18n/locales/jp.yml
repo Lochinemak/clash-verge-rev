@@ -10,6 +10,12 @@ notifications:
     title: システムプロキシ
     'on': System proxy has been enabled.
     'off': System proxy has been disabled.
+  systemProxyFailed:
+    title: システムプロキシ
+    body: システムプロキシを設定できませんでした。理由は Clash Verge を開いて確認してください。
+  systemProxyGuardStopped:
+    title: システムプロキシガード
+    body: 連続して失敗したため停止しました。理由は Clash Verge を開いて確認してください。
   tunModeToggled:
     title: TUN モード
     'on': TUN mode has been enabled.
@@ -44,7 +50,6 @@ launchGuard:
     {reason}
   notInBundle: 実行ファイルがアプリケーションバンドル内にありません。
   canonicalizeBundleError: アプリケーションバンドルのパスを解決できませんでした：{error}
-  bundleNameError: アプリケーションバンドル名を確認できないため、アプリケーションを終了します。
   replacePrompt: '{destination} には既にアプリケーションがあります。置き換えて Applications から再起動しますか？'
   movePrompt: バックグラウンドサービスを安全に起動するには、アプリケーションを {destination} に移動する必要があります。今すぐ移動して再起動しますか？
   createApplicationsDirError: Applications ディレクトリを作成できませんでした：{error}

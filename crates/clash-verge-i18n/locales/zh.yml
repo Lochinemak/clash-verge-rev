@@ -10,6 +10,12 @@ notifications:
     title: 系统代理
     'on': 系统代理已启用。
     'off': 系统代理已禁用。
+  systemProxyFailed:
+    title: 系统代理
+    body: 系统代理设置失败。打开 Clash Verge 查看原因。
+  systemProxyGuardStopped:
+    title: 系统代理守卫
+    body: 连续多次失败后已停止守卫。打开 Clash Verge 查看原因。
   tunModeToggled:
     title: TUN 模式
     'on': TUN 模式已开启。
@@ -44,7 +50,6 @@ launchGuard:
     {reason}
   notInBundle: 可执行文件不在应用包内。
   canonicalizeBundleError: 无法解析应用包路径：{error}
-  bundleNameError: 无法确定应用包名称，应用将退出。
   replacePrompt: 目标位置已存在应用：{destination}。是否替换并从 Applications 重新启动？
   movePrompt: 为了安全启动后台服务，需要将应用移动到 {destination}。是否现在移动并重新启动？
   createApplicationsDirError: 无法创建 Applications 目录：{error}

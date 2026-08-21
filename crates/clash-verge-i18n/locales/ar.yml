@@ -10,6 +10,12 @@ notifications:
     title: وكيل النظام
     'on': System proxy has been enabled.
     'off': System proxy has been disabled.
+  systemProxyFailed:
+    title: وكيل النظام
+    body: تعذّر ضبط وكيل النظام. افتح Clash Verge لمعرفة السبب.
+  systemProxyGuardStopped:
+    title: حارس وكيل النظام
+    body: توقف بعد عدة إخفاقات متتالية. افتح Clash Verge لمعرفة السبب.
   tunModeToggled:
     title: وضع TUN
     'on': TUN mode has been enabled.
@@ -44,7 +50,6 @@ launchGuard:
     {reason}
   notInBundle: الملف التنفيذي ليس داخل حزمة تطبيق.
   canonicalizeBundleError: 'تعذر تحديد المسار الفعلي لحزمة التطبيق: {error}'
-  bundleNameError: تعذر تحديد اسم حزمة التطبيق. سيتم إنهاء التطبيق.
   replacePrompt: يوجد تطبيق بالفعل في {destination}. هل تريد استبداله وإعادة تشغيله من Applications؟
   movePrompt: لتشغيل خدمة الخلفية بأمان، يجب نقل التطبيق إلى {destination}. هل تريد نقله وإعادة تشغيله الآن؟
   createApplicationsDirError: 'تعذر إنشاء مجلد Applications: {error}'

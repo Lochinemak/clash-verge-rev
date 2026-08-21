@@ -19,7 +19,6 @@ import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, useNavigate } from 'react-router'
-import { MihomoWebSocket } from 'tauri-plugin-mihomo-api'
 
 import appIcon from '@/assets/image/app-icon.png'
 import LogoSvg from '@/assets/image/logo.svg?react'
@@ -28,6 +27,7 @@ import { LayoutItem } from '@/components/layout/layout-item'
 import { LayoutTraffic } from '@/components/layout/layout-traffic'
 import { NoticeManager } from '@/components/layout/notice-manager'
 import { ServiceMigrationDialog } from '@/components/layout/service-migration-dialog'
+import { SysproxyPrivilegeDialog } from '@/components/layout/sysproxy-privilege-dialog'
 import { UpdateButton } from '@/components/layout/update-button'
 import {
   WindowControls,
@@ -44,6 +44,7 @@ import {
   useLayoutEvents,
   useLoadingOverlay,
   useNavMenuOrder,
+  usePendingFailures,
 } from './_layout/hooks'
 import { handleNoticeMessage } from './_layout/utils'
 import { navItems } from './_navigation'
@@ -161,24 +162,6 @@ const Layout = () => {
   const navigate = useNavigate()
   const themeReady = useMemo(() => Boolean(theme), [theme])
 
-  // 开发环境下检测 MihomoWebSocket 的所有实例
-  useEffect(() => {
-    let id: number
-    if (import.meta.env.DEV) {
-      id = setInterval(() => {
-        MihomoWebSocket.get_all_instances().then((list) => {
-          console.log('Mihomo ws instances', list)
-        })
-      }, 1000)
-    }
-
-    return () => {
-      if (id) {
-        clearInterval(id)
-      }
-    }
-  }, [])
-
   const [menuUnlocked, setMenuUnlocked] = useState(false)
   const [menuContextPosition, setMenuContextPosition] =
     useState<MenuContextPosition | null>(null)
@@ -288,6 +271,7 @@ const Layout = () => {
   )
 
   useLayoutEvents(handleNotice)
+  usePendingFailures()
 
   useEffect(() => {
     if (language) {
@@ -318,6 +302,7 @@ const Layout = () => {
       {/* 左侧底部窗口控制按钮 */}
       <NoticeManager position={verge?.notice_position} />
       <ServiceMigrationDialog />
+      <SysproxyPrivilegeDialog />
       <div
         style={{
           animation: 'fadeIn 0.5s',

@@ -58,7 +58,6 @@ import {
 import { debugLog } from '@/utils/debug'
 import { compareByDelay, DEFAULT_DELAY_TIMEOUT } from '@/utils/delay'
 
-// 本地存储的键名
 const STORAGE_KEY_GROUP = 'clash-verge-selected-proxy-group'
 const STORAGE_KEY_SORT_TYPE = 'clash-verge-proxy-sort-type'
 
@@ -66,7 +65,6 @@ const AUTO_CHECK_DEFAULT_INTERVAL_MINUTES = 5
 const AUTO_CHECK_INITIAL_DELAY_MS = 100
 const PROXY_MENU_MAX_HEIGHT = 500
 
-// 代理节点信息接口
 interface ProxyOption {
   memberIndex: number
   member: ResolvedProxyMember
@@ -76,8 +74,6 @@ interface ProxyOption {
 }
 
 type OpenSelect = 'group' | 'proxy' | null
-
-// 排序类型: 默认 | 按延迟 | 按字母
 
 function convertDelayColor(
   delayValue: number,
@@ -279,7 +275,6 @@ export const CurrentProxyCard = () => {
     [getProfileStorageKey],
   )
 
-  // 统一代理选择器
   const { handleSelectChange } = useProxySelection({
     onSuccess: () => {
       refreshProxy()
@@ -290,12 +285,10 @@ export const CurrentProxyCard = () => {
     },
   })
 
-  // 判断模式
   const mode = clashConfig?.mode?.toLowerCase() || 'rule'
   const isGlobalMode = mode === 'global'
   const isDirectMode = mode === 'direct'
 
-  // Sorting type state
   const [sortType, setSortType] = useState<ProxySortType>(() => {
     const savedSortType = localStorage.getItem(STORAGE_KEY_SORT_TYPE)
     return savedSortType ? (Number(savedSortType) as ProxySortType) : 0
@@ -304,7 +297,6 @@ export const CurrentProxyCard = () => {
   const [selectedGroupName, setSelectedGroupName] = useState('')
   const [openSelect, setOpenSelect] = useState<OpenSelect>(null)
   const delayButtonRef = useRef<HTMLButtonElement>(null)
-  // Sorting reads delays from a store outside React; this hands them over as a value.
   const delays = useGroupDelays(selectedGroupName || null)
 
   const autoCheckInProgressRef = useRef(false)
@@ -448,11 +440,11 @@ export const CurrentProxyCard = () => {
       }
       const previousProxy = selectedGroup.now
       const nextName = option.member.ref.name
-      // Recorded like any other selection, global mode included: what the profile holds is
-      // what gets re-applied when a core starts, so a choice it never learns about is undone.
+      // The profile selection is the durable source across core restarts and run modes.
       handleSelectChange(
         selectedGroup.name,
         previousProxy,
+        selectedGroup.fixed,
       )({
         target: { value: nextName },
       })
@@ -460,7 +452,6 @@ export const CurrentProxyCard = () => {
     [handleSelectChange, isDirectMode, selectedGroup, unsortedProxyOptions],
   )
 
-  // 导航到代理页面
   const goToProxies = useCallback(() => {
     navigate('/proxies')
   }, [navigate])
@@ -474,7 +465,6 @@ export const CurrentProxyCard = () => {
       ? delayManager.getDelayFix(currentMember, selectedGroupName)
       : -1
 
-  // 信号图标（增加非空校验）
   const signalInfo =
     currentProxy && selectedGroupName
       ? getSignalIcon(currentDelay, t)
@@ -557,14 +547,12 @@ export const CurrentProxyCard = () => {
     autoDelayEnabled,
   ])
 
-  // 排序类型变更
   const handleSortTypeChange = useCallback(() => {
     const newSortType = ((sortType + 1) % 3) as ProxySortType
     setSortType(newSortType)
     localStorage.setItem(STORAGE_KEY_SORT_TYPE, newSortType.toString())
   }, [sortType])
 
-  // 延迟测试
   const handleCheckDelay = useLockFn(async () => {
     const groupName = selectedGroupName
     if (!groupName || isDirectMode) return
@@ -611,7 +599,6 @@ export const CurrentProxyCard = () => {
     [handleCheckDelay],
   )
 
-  // 计算要显示的代理选项（增加非空校验）
   const proxyOptions = useMemo(
     () =>
       isDirectMode
@@ -631,7 +618,6 @@ export const CurrentProxyCard = () => {
     ],
   )
 
-  // 获取排序图标
   const getSortIcon = (): React.ReactElement => {
     switch (sortType) {
       case 1:
@@ -643,7 +629,6 @@ export const CurrentProxyCard = () => {
     }
   }
 
-  // 获取排序提示文本
   const getSortTooltip = (): string => {
     switch (sortType) {
       case 0:
@@ -719,7 +704,6 @@ export const CurrentProxyCard = () => {
         <Box sx={{ py: 4, height: 24 }} />
       ) : currentProxy || (!isDirectMode && selectedGroup) ? (
         <Box>
-          {/* 代理节点信息显示 */}
           <Box
             sx={{
               display: 'flex',
@@ -764,7 +748,6 @@ export const CurrentProxyCard = () => {
                     sx={{ mr: 0.5 }}
                   />
                 )}
-                {/* 节点特性 */}
                 {currentProxy?.udp && (
                   <Chip size="small" label="UDP" variant="outlined" />
                 )}
@@ -783,7 +766,6 @@ export const CurrentProxyCard = () => {
               </Box>
             </Box>
 
-            {/* 显示延迟 */}
             {currentProxy && !isDirectMode && (
               <Chip
                 size="small"
@@ -792,7 +774,6 @@ export const CurrentProxyCard = () => {
               />
             )}
           </Box>
-          {/* 代理组选择器 */}
           <FormControl
             fullWidth
             variant="outlined"

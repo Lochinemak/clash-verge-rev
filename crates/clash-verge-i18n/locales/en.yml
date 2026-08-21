@@ -10,6 +10,12 @@ notifications:
     title: System Proxy
     'on': System proxy has been enabled.
     'off': System proxy has been disabled.
+  systemProxyFailed:
+    title: System Proxy
+    body: The system proxy could not be set. Open Clash Verge to see why.
+  systemProxyGuardStopped:
+    title: System Proxy Guard
+    body: The guard stopped after failing several times running. Open Clash Verge to see why.
   tunModeToggled:
     title: TUN Mode
     'on': TUN mode has been enabled.
@@ -44,7 +50,6 @@ launchGuard:
     {reason}
   notInBundle: The executable is not inside an application bundle.
   canonicalizeBundleError: 'Unable to resolve the application bundle path: {error}'
-  bundleNameError: Unable to determine the application bundle name. The application will exit.
   replacePrompt: An application already exists at {destination}. Replace it and relaunch from Applications?
   movePrompt: To start the background service safely, the application must be moved to {destination}. Move and relaunch it now?
   createApplicationsDirError: 'Unable to create the Applications directory: {error}'
