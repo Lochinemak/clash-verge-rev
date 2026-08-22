@@ -284,7 +284,7 @@ async function updateCargoLockVersion(newVersion) {
   const versionWithoutV = newVersion.replace(/^v/, '')
   const data = await fs.readFile(cargoLockPath, 'utf8')
   const packagePattern =
-    /(\[\[package\]\]\nname = "clash-verge"\nversion = ")[^"]+("\n)/
+    /(\[\[package\]\]\r?\nname = "clash-verge"\r?\nversion = ")[^"]+("(?:\r?\n|$))/
 
   if (!packagePattern.test(data)) {
     throw new Error('Unable to find the clash-verge package in Cargo.lock')
